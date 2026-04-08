@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#020509">
+<title>HELM // Navigation Console</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --c-bg: #020509; --c-panel: rgba(6,9,15,0.88); --c-border: #0a2a40;
+    --c-accent: #0e7fc4; --c-accent2: #e8a020; --c-text: #7ab8d8; --c-dim: #2a5070;
+    --c-fleet: #1d9e75; --c-frontier: #e8a020; --c-contested: #d85a30; --c-deep: #7f77dd;
+    --font-mono: 'Share Tech Mono', monospace; --font-disp: 'Orbitron', monospace;
+  }
+  body { background: var(--c-bg); color: var(--c-text); font-family: var(--font-mono); overflow: hidden; height: 100dvh; width: 100vw; touch-action: none; display: flex; flex-direction: column; }
+
+  /* MAP */
+  #map-wrap { position: relative; flex: 1; overflow: hidden; background: var(--c-bg); }
+  canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 30%, #020509 100%); }
+  #scanline { position: absolute; top: 0; left: 0; width: 100%; height: 1px; background: rgba(14,127,196,.08); animation: scan 6s linear infinite; pointer-events: none; }
+  @keyframes scan { from { top: 0; } to { top: 100%; } }
+
+  /* TOP HUD */
+  #top-hud {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; gap: 10px; background: var(--c-panel);
+    backdrop-filter: blur(6px); border-bottom: 1px solid var(--c-border);
+    flex-shrink: 0;
+  }
+  .ship-name { font-family: var(--font-disp); font-size: 14px; color: var(--c-accent2); }
+  .ship-sub  { font-size: 10px; color: var(--c-dim); margin-top: 2px; }
+  .hud-stat  { text-align: right; }
+  .hud-stat-label { font-size: 9px; color: var(--c-dim); text-transform: uppercase; }
+  .hud-stat-val   { font-size: 13px; color: var(--c-text); }
+  .hud-stat-val.warn { color: #e8a020; }
+  .hud-stat-val.crit { color: #d85a30; }
+
+  /* NAV STATUS OVERLAY */
+  #nav-status {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); border: 1px solid var(--c-accent);
+    padding: 4px 12px; border-radius: 20px; font-size: 11px; color: var(--c-accent);
+    pointer-events: none; white-space: nowrap;
+  }
+  #nav-status.offline { border-color: #d85a30; color: #d85a30; }
+
+  /* FABs */
+  #fab-container {
+    position: absolute; right: 12px; bottom: 12px;
+    display: flex; flex-direction: column; gap: 10px; pointer-events: auto; z-index: 20;
+  }
+  .fab {
+    width: 46px; height: 46px; border-radius: 23px;
+    background: var(--c-panel); border: 1px solid var(--c-accent); color: var(--c-text);
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.6); backdrop-filter: blur(4px); cursor: pointer;
+  }
+  .fab:active { background: var(--c-accent); color: #fff; }
+
+  /* LEGEND */
+  #legend-menu {
+    position: absolute; top: 8px; right: 12px;
+    background: var(--c-panel); border: 1px solid var(--c-border);
+    padding: 10px; border-radius: 8px; display: none; flex-direction: column;
+    gap: 8px; backdrop-filter: blur(6px); z-index: 30;
+  }
+  #legend-menu.active { display: flex; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  .legend-item.off { opacity: 0.3; }
+  .ldot { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* CONTROLS BAR */
+  #controls-bar {
+    background: var(--c-panel); border-top: 1px solid var(--c-border);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    display: flex; gap: 12px; align-items: center; flex-shrink: 0;
+  }
+  .ctrl-group { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .ctrl-label { font-size: 10px; color: var(--c-dim); text-transform: uppercase; display: flex; justify-content: space-between; }
+  .ctrl-label span { color: var(--c-accent); }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+    background: var(--c-border); border-radius: 3px; outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 22px; height: 22px; border-radius: 11px;
+    background: var(--c-accent); border: 2px solid #fff; box-shadow: 0 0 8px rgba(14,127,196,0.5);
+  }
+  #velocity-slider { background: linear-gradient(to right, #0a2a40 50%, #1d9e75 50%); }
+
+  .btn-send {
+    padding: 10px 14px; background: #0d2535; border: 1px solid var(--c-accent);
+    border-radius: 8px; color: var(--c-text); font-family: var(--font-disp);
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-send:active { background: var(--c-accent); color: #fff; }
+
+  /* CONNECTION INDICATOR */
+  #conn-dot {
+    width: 8px; height: 8px; border-radius: 4px;
+    background: #d85a30; flex-shrink: 0; transition: background 0.3s;
+  }
+  #conn-dot.ok { background: #1d9e75; }
+
+  #warp-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.5s ease-out; z-index: 999; }
+</style>
+</head>
+<body>
+
+<div id="top-hud">
+  <div>
+    <div class="ship-name" id="hud-ship-name">ORION'S WAKE</div>
+    <div class="ship-sub" id="hud-sub">HELM // aguardando conexão...</div>
+  </div>
+  <div style="display:flex;gap:14px;align-items:center">
+    <div class="hud-stat">
+      <div class="hud-stat-label">Hull</div>
+      <div class="hud-stat-val" id="hud-hull">—</div>
+    </div>
+    <div class="hud-stat">
+      <div class="hud-stat-label">Warp</div>
+      <div class="hud-stat-val" id="hud-warp">—</div>
+    </div>
+    <div class="hud-stat">
+      <div class="hud-stat-label">Timer</div>
+      <div class="hud-stat-val" id="hud-timer">—</div>
+    </div>
+    <div id="conn-dot"></div>
+    <div class="fab" style="position:static;width:36px;height:36px;border-radius:6px;font-size:16px" onclick="toggleMenu()">≡</div>
+  </div>
+</div>
+
+<div id="map-wrap">
+  <canvas id="starfield"></canvas>
+  <canvas id="world"></canvas>
+  <div id="vignette"></div>
+  <div id="scanline"></div>
+  <div id="nav-status">NAV OFFLINE</div>
+
+  <div id="legend-menu">
+    <div class="legend-item" onclick="toggleRegion('fleet',this)"><div class="ldot" style="background:var(--c-fleet)"></div>Frota</div>
+    <div class="legend-item" onclick="toggleRegion('frontier',this)"><div class="ldot" style="background:var(--c-frontier)"></div>Fronteira</div>
+    <div class="legend-item" onclick="toggleRegion('contested',this)"><div class="ldot" style="background:var(--c-contested)"></div>Contestado</div>
+    <div class="legend-item" onclick="toggleRegion('deep',this)"><div class="ldot" style="background:var(--c-deep)"></div>Deep Space</div>
+  </div>
+
+  <div id="fab-container">
+    <div class="fab" onclick="focusShip()" title="Focar no navio">◈</div>
+    <div class="fab" onclick="focusTarget()" title="Focar no alvo">✦</div>
+    <div class="fab" onclick="centerView()" title="Centrar mapa">⌖</div>
+  </div>
+</div>
+
+<div id="controls-bar">
+  <div class="ctrl-group">
+    <div class="ctrl-label">Velocidade <span id="vel-val">0%</span></div>
+    <input type="range" id="velocity-slider" min="-50" max="100" value="0" step="1">
+  </div>
+  <div class="ctrl-group">
+    <div class="ctrl-label">Heading <span id="hdg-val">0°</span></div>
+    <input type="range" id="heading-slider" min="0" max="359" value="0" step="1">
+  </div>
+  <button class="btn-send" onclick="sendMapToViewscreen()">ENVIAR<br>MAPA</button>
+</div>
+
+<div id="warp-flash"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const COLORS = { fleet:'#1d9e75', frontier:'#e8a020', contested:'#d85a30', deep:'#7f77dd' };
+const REGION_NAMES = { fleet:'Frota', frontier:'Fronteira', contested:'Contestado', deep:'Espaço Profundo' };
+const WORLD_W = 2800, WORLD_H = 2200;
+
+let starfieldCanvas, starfieldCtx, worldCanvas, worldCtx, screenW, screenH;
+let systems = [], routes = [], hiddenRegions = {};
+let shipPos = { x: 400, y: 300 };
+let targetPos = null;
+let camX = 0, camY = 0, zoom = 0.3;
+let targetCamX = WORLD_W/2, targetCamY = WORLD_H/2, targetZoom = 0.3;
+let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartCamX = 0, dragStartCamY = 0;
+let lastTouchDist = 0;
+let shipAnim = 0; // for animation pulse
+let ws = null;
+let connected = false;
+let maxWarp = 100; // propulsion energy from server
+let navOnline = false;
+
+// ── URL parsing ────────────────────────────────────────────────────────────
+const sessionCode = location.pathname.split('/').pop().toUpperCase();
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/helm/${sessionCode}`);
+
+  ws.onopen = () => {
+    connected = true;
+    document.getElementById('conn-dot').classList.add('ok');
+    document.getElementById('hud-sub').textContent = 'HELM // conectado';
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'role_assigned' || msg.type === 'game_state') {
+      if (msg.mapData) loadMap(msg.mapData);
+      if (msg.ship)   updateShipState(msg.ship);
+      if (msg.energy) updateEnergy(msg.energy);
+      if (msg.mission) updateMission(msg.mission);
+    }
+    if (msg.type === 'error') {
+      document.getElementById('hud-sub').textContent = `ERRO: ${msg.reason}`;
+    }
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('conn-dot').classList.remove('ok');
+    document.getElementById('hud-sub').textContent = 'HELM // desconectado — reconectando...';
+    setTimeout(connect, 3000);
+  };
+}
+
+function loadMap(mapData) {
+  systems = mapData.systems;
+  routes  = mapData.routes;
+}
+
+function updateShipState(ship) {
+  shipPos = ship.position;
+  document.getElementById('hud-ship-name').textContent = ship.name;
+  const hullEl = document.getElementById('hud-hull');
+  hullEl.textContent = Math.round(ship.hull) + '%';
+  hullEl.className = 'hud-stat-val' + (ship.hull < 30 ? ' crit' : ship.hull < 60 ? ' warn' : '');
+}
+
+function updateEnergy(energy) {
+  const prop = energy.allocation.propulsion ?? 40;
+  maxWarp = prop;
+  const navComp = energy.allocation.navComputer ?? 10;
+  navOnline = navComp >= 15;
+  const navEl = document.getElementById('nav-status');
+  navEl.textContent = navOnline ? 'NAV ONLINE' : 'NAV OFFLINE';
+  navEl.className = navOnline ? '' : 'offline';
+  document.getElementById('hud-warp').textContent = Math.round(prop) + '%';
+}
+
+function updateMission(mission) {
+  targetPos = mission.target ? { x: mission.target.x, y: mission.target.y } : null;
+  const t = Math.max(0, Math.round(mission.timer));
+  const m = String(Math.floor(t / 60)).padStart(2, '0');
+  const s = String(t % 60).padStart(2, '0');
+  const timerEl = document.getElementById('hud-timer');
+  timerEl.textContent = `${m}:${s}`;
+  timerEl.className = 'hud-stat-val' + (t < 60 ? ' crit' : t < 120 ? ' warn' : '');
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+function sendHelmInput() {
+  if (!connected || !ws) return;
+  const v = parseInt(document.getElementById('velocity-slider').value);
+  const h = parseInt(document.getElementById('heading-slider').value);
+  ws.send(JSON.stringify({ type: 'helm_input', velocity: v / 100, heading: h }));
+}
+
+document.getElementById('velocity-slider').addEventListener('input', (e) => {
+  document.getElementById('vel-val').textContent = e.target.value + '%';
+  sendHelmInput();
+});
+document.getElementById('heading-slider').addEventListener('input', (e) => {
+  document.getElementById('hdg-val').textContent = e.target.value + '°';
+  sendHelmInput();
+});
+
+function sendMapToViewscreen() {
+  if (!connected || !ws) return;
+  ws.send(JSON.stringify({
+    type: 'send_to_viewscreen',
+    payload: { view: 'helm_map', zoom: targetZoom, camX: targetCamX, camY: targetCamY, shipPos, targetPos }
+  }));
+  const btn = document.querySelector('.btn-send');
+  btn.style.borderColor = '#1d9e75';
+  setTimeout(() => btn.style.borderColor = '', 800);
+}
+
+// ── Map rendering (adapted from prototype) ─────────────────────────────────
+function pseudoRandom(s) { let x = Math.sin(s) * 10000; return x - Math.floor(x); }
+function lerp(a, b, t) { return (1-t)*a + t*b; }
+function worldToScreenX(wx) { return (wx - camX) * zoom + screenW / 2; }
+function worldToScreenY(wy) { return (wy - camY) * zoom + screenH / 2; }
+function screenToWorldX(sx) { return (sx - screenW/2) / zoom + camX; }
+function screenToWorldY(sy) { return (sy - screenH/2) / zoom + camY; }
+
+function drawStarfield() {
+  starfieldCtx.clearRect(0, 0, screenW, screenH);
+  starfieldCtx.fillStyle = '#020509';
+  starfieldCtx.fillRect(0, 0, screenW, screenH);
+  const count = Math.floor(screenW * screenH / 400);
+  for (let i = 0; i < count; i++) {
+    const x = pseudoRandom(5000+i)*screenW, y = pseudoRandom(5001+i)*screenH;
+    const bright = pseudoRandom(5003+i);
+    starfieldCtx.fillStyle = `rgba(200,225,255,${0.2 + bright*0.3})`;
+    starfieldCtx.fillRect(x, y, 1.5, 1.5);
+  }
+}
+
+function drawRegions() {
+  if (!systems.length) return;
+  systems.forEach(s => {
+    if (hiddenRegions[s.region]) return;
+    const x = worldToScreenX(s.px), y = worldToScreenY(s.py);
+    const r = 400 * zoom;
+    if (x < -r || x > screenW+r || y < -r || y > screenH+r) return;
+    const col = COLORS[s.region];
+    const grad = worldCtx.createRadialGradient(x,y,0,x,y,r);
+    grad.addColorStop(0, col+'1A'); grad.addColorStop(1, col+'00');
+    worldCtx.fillStyle = grad;
+    worldCtx.beginPath(); worldCtx.arc(x, y, r, 0, Math.PI*2); worldCtx.fill();
+  });
+}
+
+function drawRoutes() {
+  if (!systems.length) return;
+  routes.forEach(([ai, bi]) => {
+    const a = systems[ai], b = systems[bi];
+    if (!a || !b || hiddenRegions[a.region] || hiddenRegions[b.region]) return;
+    const ax = worldToScreenX(a.px), ay = worldToScreenY(a.py);
+    const bx = worldToScreenX(b.px), by = worldToScreenY(b.py);
+    const cross = a.region !== b.region;
+    worldCtx.strokeStyle = cross ? '#1a4060' : '#0d2535';
+    worldCtx.lineWidth = cross ? 1.5 : 1;
+    worldCtx.setLineDash(cross ? [5,5] : [2,4]);
+    worldCtx.beginPath(); worldCtx.moveTo(ax,ay); worldCtx.lineTo(bx,by); worldCtx.stroke();
+    worldCtx.setLineDash([]);
+  });
+}
+
+function drawSystems() {
+  if (!systems.length) return;
+  systems.forEach(s => {
+    if (hiddenRegions[s.region]) return;
+    const x = worldToScreenX(s.px), y = worldToScreenY(s.py);
+    if (x < -30 || x > screenW+30 || y < -30 || y > screenH+30) return;
+    const col = COLORS[s.region];
+    worldCtx.shadowBlur = 10*Math.min(zoom,1.5); worldCtx.shadowColor = col;
+    worldCtx.fillStyle = col;
+    worldCtx.beginPath(); worldCtx.arc(x, y, (s.isBase?6:4)*Math.min(zoom,1.5), 0, Math.PI*2); worldCtx.fill();
+    worldCtx.shadowBlur = 0;
+    if (zoom > 0.35) {
+      worldCtx.fillStyle = col+'e6';
+      worldCtx.font = `bold ${Math.max(11,13*zoom)}px 'Share Tech Mono',monospace`;
+      worldCtx.fillText(s.name, x+10, y-6);
+    }
+  });
+}
+
+function drawShip() {
+  const x = worldToScreenX(shipPos.x), y = worldToScreenY(shipPos.y);
+  shipAnim += 0.05;
+  const pulse = 0.7 + 0.3 * Math.sin(shipAnim);
+  // outer ring
+  worldCtx.strokeStyle = `rgba(14,127,196,${0.4*pulse})`;
+  worldCtx.lineWidth = 1.5;
+  worldCtx.beginPath(); worldCtx.arc(x, y, 18*Math.min(zoom,1)*pulse, 0, Math.PI*2); worldCtx.stroke();
+  // ship dot
+  worldCtx.shadowBlur = 12; worldCtx.shadowColor = '#0e7fc4';
+  worldCtx.fillStyle = '#0e7fc4';
+  worldCtx.beginPath(); worldCtx.arc(x, y, 5*Math.min(zoom,1.5), 0, Math.PI*2); worldCtx.fill();
+  worldCtx.shadowBlur = 0;
+  // label
+  if (zoom > 0.25) {
+    worldCtx.fillStyle = '#7ab8d8';
+    worldCtx.font = `10px 'Share Tech Mono',monospace`;
+    worldCtx.fillText('◈ ORION', x+8, y-8);
+  }
+}
+
+function drawTarget() {
+  if (!targetPos) return;
+  const x = worldToScreenX(targetPos.x), y = worldToScreenY(targetPos.y);
+  shipAnim; // already incremented
+  const pulse = 0.6 + 0.4 * Math.sin(shipAnim * 1.3);
+  // pulsing ring
+  worldCtx.strokeStyle = `rgba(216,90,48,${0.5*pulse})`;
+  worldCtx.lineWidth = 1.5;
+  worldCtx.beginPath(); worldCtx.arc(x, y, 22*Math.min(zoom,1)*pulse, 0, Math.PI*2); worldCtx.stroke();
+  // crosshair
+  const cr = 8*Math.min(zoom,1.5);
+  worldCtx.strokeStyle = '#d85a30'; worldCtx.lineWidth = 1.5;
+  worldCtx.beginPath();
+  worldCtx.moveTo(x-cr*2,y); worldCtx.lineTo(x-cr,y);
+  worldCtx.moveTo(x+cr,y);   worldCtx.lineTo(x+cr*2,y);
+  worldCtx.moveTo(x,y-cr*2); worldCtx.lineTo(x,y-cr);
+  worldCtx.moveTo(x,y+cr);   worldCtx.lineTo(x,y+cr*2);
+  worldCtx.stroke();
+  // dot
+  worldCtx.shadowBlur = 12; worldCtx.shadowColor = '#d85a30';
+  worldCtx.fillStyle = '#d85a30';
+  worldCtx.beginPath(); worldCtx.arc(x, y, 4*Math.min(zoom,1.5), 0, Math.PI*2); worldCtx.fill();
+  worldCtx.shadowBlur = 0;
+  if (zoom > 0.25) {
+    worldCtx.fillStyle = '#d85a30';
+    worldCtx.font = `10px 'Share Tech Mono',monospace`;
+    worldCtx.fillText('✦ ALVO', x+8, y-8);
+  }
+}
+
+function drawDistanceLine() {
+  if (!targetPos) return;
+  const sx = worldToScreenX(shipPos.x), sy = worldToScreenY(shipPos.y);
+  const tx = worldToScreenX(targetPos.x), ty = worldToScreenY(targetPos.y);
+  worldCtx.strokeStyle = 'rgba(216,90,48,0.2)';
+  worldCtx.lineWidth = 1;
+  worldCtx.setLineDash([4,6]);
+  worldCtx.beginPath(); worldCtx.moveTo(sx,sy); worldCtx.lineTo(tx,ty); worldCtx.stroke();
+  worldCtx.setLineDash([]);
+  // distance label
+  const dist = Math.round(Math.sqrt((shipPos.x-targetPos.x)**2+(shipPos.y-targetPos.y)**2));
+  const mx = (sx+tx)/2, my = (sy+ty)/2;
+  worldCtx.fillStyle = 'rgba(216,90,48,0.7)';
+  worldCtx.font = `10px 'Share Tech Mono',monospace`;
+  worldCtx.fillText(`${dist} u`, mx+4, my-4);
+}
+
+function animate() {
+  camX = lerp(camX, targetCamX, 0.15);
+  camY = lerp(camY, targetCamY, 0.15);
+  zoom = lerp(zoom, targetZoom, 0.15);
+  worldCtx.clearRect(0,0,screenW,screenH);
+  drawRegions();
+  drawRoutes();
+  drawSystems();
+  drawDistanceLine();
+  drawTarget();
+  drawShip();
+  requestAnimationFrame(animate);
+}
+
+// ── Camera helpers ─────────────────────────────────────────────────────────
+function centerView() { targetCamX = WORLD_W/2; targetCamY = WORLD_H/2; targetZoom = 0.2; }
+function focusShip()   { targetCamX = shipPos.x; targetCamY = shipPos.y; targetZoom = 0.6; }
+function focusTarget() { if (!targetPos) return; targetCamX = targetPos.x; targetCamY = targetPos.y; targetZoom = 0.45; }
+function toggleMenu()  { document.getElementById('legend-menu').classList.toggle('active'); }
+function toggleRegion(id, el) { hiddenRegions[id] = !hiddenRegions[id]; el.classList.toggle('off', !!hiddenRegions[id]); }
+
+// ── Pointer handling ───────────────────────────────────────────────────────
+function handlePointerDown(x,y) { isDragging=true; dragStartX=x; dragStartY=y; dragStartCamX=targetCamX; dragStartCamY=targetCamY; }
+function handlePointerMove(x,y) { if(isDragging){ targetCamX=dragStartCamX-(x-dragStartX)/zoom; targetCamY=dragStartCamY-(y-dragStartY)/zoom; } }
+function handlePointerUp(x,y)   { isDragging=false; }
+
+// ── Init ───────────────────────────────────────────────────────────────────
+function init() {
+  const wrap = document.getElementById('map-wrap');
+  starfieldCanvas = document.getElementById('starfield'); starfieldCtx = starfieldCanvas.getContext('2d');
+  worldCanvas     = document.getElementById('world');     worldCtx     = worldCanvas.getContext('2d');
+
+  function resize() {
+    screenW = wrap.clientWidth; screenH = wrap.clientHeight;
+    starfieldCanvas.width = screenW; starfieldCanvas.height = screenH;
+    worldCanvas.width     = screenW; worldCanvas.height     = screenH;
+    drawStarfield();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    const wx = screenToWorldX(mx), wy = screenToWorldY(my);
+    const delta = e.deltaY > 0 ? 0.85 : 1.18;
+    targetZoom = Math.max(0.1, Math.min(3, targetZoom*delta));
+    targetCamX = wx-(mx-screenW/2)/targetZoom;
+    targetCamY = wy-(my-screenH/2)/targetZoom;
+  }, { passive: false });
+
+  wrap.addEventListener('mousedown',  e => handlePointerDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove',e => handlePointerMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup',  e => handlePointerUp(e.clientX, e.clientY));
+
+  wrap.addEventListener('touchstart', e => {
+    if (e.touches.length===1) handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+    else if (e.touches.length===2) lastTouchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+  }, { passive: false });
+  wrap.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length===1) handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+    else if (e.touches.length===2) {
+      const dist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      targetZoom = Math.max(0.1, Math.min(3, targetZoom*dist/lastTouchDist));
+      lastTouchDist = dist;
+    }
+  }, { passive: false });
+  wrap.addEventListener('touchend', e => { if(e.changedTouches.length) handlePointerUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY); });
+
+  connect();
+  requestAnimationFrame(animate);
+}
+
+setTimeout(init, 100);
+</script>
+</body>
+</html>

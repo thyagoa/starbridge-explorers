@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#020509">
+<title>HELM // Navigation Console</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  
+  :root {
+    --c-bg: #020509;
+    --c-panel: rgba(6, 9, 15, 0.85);
+    --c-border: #0a2a40;
+    --c-accent: #0e7fc4;
+    --c-accent2: #e8a020;
+    --c-text: #7ab8d8;
+    --c-dim: #2a5070;
+    --c-fleet: #1d9e75;
+    --c-frontier: #e8a020;
+    --c-contested: #d85a30;
+    --c-deep: #7f77dd;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-disp: 'Orbitron', monospace;
+  }
+
+  body {
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    touch-action: none; 
+  }
+
+  /* --- HUD OVERLAYS --- */
+  #ui-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none; 
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    z-index: 10;
+  }
+
+  .hud-panel {
+    background: var(--c-panel);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid var(--c-border);
+    pointer-events: auto;
+  }
+
+  /* TOP BAR */
+  #top-hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .ship-status {
+    flex: 1;
+    border-left: 3px solid var(--c-accent2);
+    padding: 8px 12px;
+    border-radius: 0 8px 8px 0;
+  }
+  .ship-name { font-family: var(--font-disp); font-size: 16px; color: var(--c-accent2); }
+  .ship-sub { font-size: 11px; color: var(--c-dim); margin-top: 2px; }
+
+  .menu-btn {
+    background: var(--c-panel);
+    border: 1px solid var(--c-accent);
+    color: var(--c-accent);
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    pointer-events: auto;
+  }
+
+  /* LEGEND MENU */
+  #legend-menu {
+    position: absolute;
+    top: 64px;
+    right: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  #legend-menu.active { display: flex; }
+  .legend-item { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 4px; }
+  .legend-item.off { opacity: 0.3; }
+  .ldot { width: 14px; height: 14px; border-radius: 3px; }
+
+  /* FLOATING CONTROLS */
+  #fab-container {
+    position: absolute;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 12px) + 80px); 
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: auto;
+    transition: transform 0.3s cubic-bezier(0.1, 0.9, 0.2, 1);
+    z-index: 20; /* Garante que fique por cima do bottom sheet se houver sobreposição */
+  }
+  #fab-container.pushed-up {
+    transform: translateY(-340px); /* Aumentado de -220px para -340px para não ficar sob o painel */
+  }
+
+  .fab {
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    background: var(--c-panel);
+    border: 1px solid var(--c-accent);
+    color: var(--c-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+  }
+  .fab:active { background: var(--c-accent); color: #fff; }
+
+  /* BOTTOM SHEET (Target Info) */
+  #bottom-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    border-radius: 20px 20px 0 0;
+    border-top: 2px solid var(--c-accent);
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.1, 0.9, 0.2, 1);
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.8);
+    z-index: 15; /* Z-index menor que os botões flutuantes */
+  }
+  #bottom-sheet.active { transform: translateY(0); }
+
+  .sheet-header {
+    font-family: var(--font-disp);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--c-dim);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  /* NOVO BOTÃO DE FECHAR (X) */
+  .btn-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+    background: rgba(14, 127, 196, 0.15);
+    border: 1px solid var(--c-accent);
+    color: var(--c-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    pointer-events: auto;
+    transition: all 0.2s;
+  }
+  .btn-close:active {
+    background: var(--c-accent);
+    color: #fff;
+    transform: scale(0.95);
+  }
+  
+  .target-name {
+    font-family: var(--font-disp);
+    font-size: 24px;
+    color: var(--c-accent);
+    margin-bottom: 16px;
+    text-shadow: 0 0 10px rgba(14,127,196,0.5);
+  }
+
+  .target-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-box { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; border: 1px solid var(--c-border); }
+  .stat-label { font-size: 10px; color: var(--c-dim); text-transform: uppercase; margin-bottom: 4px; }
+  .stat-val { font-size: 14px; color: var(--c-text); }
+
+  .btn-engage {
+    width: 100%;
+    padding: 16px;
+    background: #0d2535;
+    border: 2px solid var(--c-accent);
+    border-radius: 12px;
+    color: var(--c-text);
+    font-family: var(--font-disp);
+    font-size: 16px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    box-shadow: inset 0 0 10px rgba(14,127,196,0.2);
+    pointer-events: auto;
+  }
+  .btn-engage:active { background: var(--c-accent); color: #fff; }
+
+  /* DEFAULT BOTTOM BAR */
+  #idle-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--c-border);
+    transition: transform 0.3s;
+  }
+  #idle-bar.hidden { transform: translateY(100%); }
+
+  /* --- CANVAS MAP --- */
+  #map-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--c-bg);
+    pointer-events: auto; 
+  }
+  canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+  
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 30%, #020509 100%); }
+  #scanline { position: absolute; top: 0; left: 0; width: 100%; height: 1px; background: rgba(14,127,196,.08); animation: scan 6s linear infinite; pointer-events: none; }
+  @keyframes scan { from { top: 0; } to { top: 100%; } }
+
+  #warp-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.5s ease-out; z-index: 999; }
+</style>
+</head>
+<body>
+
+<div id="map-wrap">
+  <canvas id="starfield"></canvas>
+  <canvas id="world"></canvas>
+  <div id="vignette"></div>
+  <div id="scanline"></div>
+</div>
+
+<div id="ui-layer">
+  <div id="top-hud">
+    <div class="hud-panel ship-status">
+      <div class="ship-name">ORION'S WAKE</div>
+      <div class="ship-sub">HELM CONSOLE // HULL 78%</div>
+    </div>
+    <div class="menu-btn" onclick="toggleMenu()">≡</div>
+  </div>
+
+  <div id="legend-menu" class="hud-panel">
+    <div class="legend-item" onclick="toggleRegion('fleet',this)"><div class="ldot" style="background:var(--c-fleet)"></div>Frota</div>
+    <div class="legend-item" onclick="toggleRegion('frontier',this)"><div class="ldot" style="background:var(--c-frontier)"></div>Fronteira</div>
+    <div class="legend-item" onclick="toggleRegion('contested',this)"><div class="ldot" style="background:var(--c-contested)"></div>Contestado</div>
+    <div class="legend-item" onclick="toggleRegion('deep',this)"><div class="ldot" style="background:var(--c-deep)"></div>Deep Space</div>
+  </div>
+
+  <div id="fab-container">
+    <div class="fab" onclick="focusBase()" title="Focar na Base">⬡</div>
+    <div class="fab" onclick="centerView()" title="Centrar Mapa">⌖</div>
+    <div class="fab" onclick="generateMap()" title="Nova Rota">↻</div>
+  </div>
+
+  <div id="idle-bar" class="hud-panel">
+    <div style="font-size: 11px; color: var(--c-dim);">
+      STATUS<br><span style="color: var(--c-fleet); font-size: 14px;">Aguardando Target</span>
+    </div>
+    <div style="font-size: 11px; color: var(--c-dim); text-align: right;">
+      WARP POOL<br><span style="color: var(--c-text); font-size: 14px;">62%</span>
+    </div>
+  </div>
+
+  <div id="bottom-sheet" class="hud-panel">
+    <div class="sheet-header">
+      <span style="display: flex; align-items: center; height: 36px;">TARGET LOCKED</span>
+      <div class="btn-close" onclick="closeTarget()">✕</div>
+    </div>
+    <div class="target-name" id="ts-name">Sistema Desconhecido</div>
+    
+    <div class="target-stats">
+      <div class="stat-box">
+        <div class="stat-label">Região</div>
+        <div class="stat-val" id="ts-region" style="font-weight:bold;">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Ponto de Interesse</div>
+        <div class="stat-val" id="ts-poi">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Planetas</div>
+        <div class="stat-val" id="ts-planets">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Nível de Ameaça</div>
+        <div class="stat-val" id="ts-threat">—</div>
+      </div>
+    </div>
+
+    <button class="btn-engage" onclick="engageWarp()">SET COURSE</button>
+  </div>
+</div>
+
+<div id="warp-flash"></div>
+
+<script>
+const COLORS = { fleet: '#1d9e75', frontier: '#e8a020', contested: '#d85a30', deep: '#7f77dd' };
+const REGION_NAMES = { fleet: 'Frota', frontier: 'Fronteira', contested: 'Contestado', deep: 'Espaço Profundo' };
+const POIS = {
+  fleet: ['Base da Frota', 'Estação Orbital', 'Estaleiro', 'Posto Avançado'],
+  frontier: ['Posto Avançado', 'Estação Neutra', 'Zona Disputada', 'Ponto Encontro'],
+  contested: ['Fortaleza Inimiga', 'Campo de Batalha', 'Posto Abandonado', 'Instalação Secreta'],
+  deep: ['Anomalia Espacial', 'Sinal Misterioso', 'Ruínas Antigas', 'Vazio Profundo']
+};
+const SYSTEM_NAMES = ['Aldara','Vex Prime','Kalon','Serith','Dovan','Neth-7','Orrath','Suleth','Pyrax','Coven','Illax','Dresh','Valon','Zerith','Moran','Ethos','Kethis','Nuova','Rethyl','Sovex','Tharion','Uvek','Wolnar','Xalon','Yevith','Zarek','Breth','Corvus','Delvar'];
+
+const WORLD_W = 2800, WORLD_H = 2200;
+const REGIONS_BOUNDS = [
+  { id: 'fleet',     x: 80,   y: 80,   w: 1100, h: 900 },
+  { id: 'frontier',  x: 1200, y: 80,   w: 750,  h: 900 },
+  { id: 'contested', x: 1980, y: 80,   w: 720,  h: 900 },
+  { id: 'deep',      x: 80,   y: 1010, w: 2620, h: 1100 }
+];
+
+let starfieldCanvas, starfieldCtx, worldCanvas, worldCtx, screenW, screenH;
+let systems = [], routes = [], hiddenRegions = {}, selectedSystem = null, startBase = null;
+let seed = 0;
+
+let camX = 0, camY = 0, zoom = 1;
+let targetCamX = 0, targetCamY = 0, targetZoom = 1;
+let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartCamX = 0, dragStartCamY = 0;
+let lastTouchDist = 0;
+
+function pseudoRandom(s) { let x = Math.sin(s) * 10000; return x - Math.floor(x); }
+function seededRandom(i) { return pseudoRandom(seed + i * 137.508); }
+function shuffleArray(a, offset) {
+  let b = [...a];
+  for(let i = b.length - 1; i > 0; i--){
+    let j = Math.floor(seededRandom(i + offset) * (i + 1));
+    [b[i], b[j]] = [b[j], b[i]];
+  }
+  return b;
+}
+function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
+function distance(a, b) { return Math.sqrt((a.px - b.px) ** 2 + (a.py - b.py) ** 2); }
+
+function worldToScreenX(wx) { return (wx - camX) * zoom + screenW / 2; }
+function worldToScreenY(wy) { return (wy - camY) * zoom + screenH / 2; }
+function screenToWorldX(sx) { return (sx - screenW / 2) / zoom + camX; }
+function screenToWorldY(sy) { return (sy - screenH / 2) / zoom + camY; }
+
+function generateMap() {
+  seed = Math.floor(Math.random() * 99999);
+  systems = []; routes = []; closeTarget(); startBase = null;
+  const names = shuffleArray(SYSTEM_NAMES, 0);
+  let nameIdx = 0;
+  
+  REGIONS_BOUNDS.forEach((reg, ri) => {
+    const count = reg.id === 'fleet' ? 6 : reg.id === 'frontier' ? 4 : reg.id === 'contested' ? 3 : 8;
+    const margin = 0.1;
+    for(let i = 0; i < count; i++) {
+      const px = reg.x + reg.w * margin + seededRandom(ri * 100 + i * 3) * reg.w * (1 - 2 * margin);
+      const py = reg.y + reg.h * margin + seededRandom(ri * 100 + i * 3 + 1) * reg.h * (1 - 2 * margin);
+      const poi = POIS[reg.id][Math.floor(seededRandom(ri * 100 + i * 3 + 2) * POIS[reg.id].length)];
+      const isBase = reg.id === 'fleet' && Math.floor(seededRandom(ri * 100 + i * 3 + 4) * 4) === 0;
+      
+      systems.push({
+        id: systems.length, name: names[nameIdx++ % names.length], region: reg.id,
+        px, py, poi, isBase,
+        planets: 1 + Math.floor(seededRandom(ri * 100 + i * 3 + 5) * 5),
+        threat: Math.round(seededRandom(ri * 100 + i * 3 + 6) * 100)
+      });
+    }
+  });
+
+  const allBases = systems.filter(s => s.isBase);
+  if(!allBases.length) systems.filter(s => s.region === 'fleet')[0].isBase = true;
+  startBase = systems.filter(s => s.isBase)[Math.floor(seededRandom(999) * systems.filter(s => s.isBase).length)];
+  
+  generateRoutes();
+  drawStarfield();
+  centerView();
+}
+
+function generateRoutes() {
+  const rorder = ['fleet', 'frontier', 'contested', 'deep'];
+  const hasRoute = (a, b) => routes.some(r => (r[0] === a && r[1] === b) || (r[0] === b && r[1] === a));
+  
+  systems.forEach((s, i) => {
+    const sameRegion = systems.filter((t, j) => j !== i && t.region === s.region).sort((a, b) => distance(s, a) - distance(s, b));
+    for(let k = 0; k < Math.min(2, sameRegion.length); k++) {
+      if(!hasRoute(s.id, sameRegion[k].id)) routes.push([s.id, sameRegion[k].id]);
+    }
+    const regionIdx = rorder.indexOf(s.region);
+    if(regionIdx < rorder.length - 1) {
+      const nextRegion = systems.filter(t => t.region === rorder[regionIdx + 1]).sort((a, b) => distance(s, a) - distance(s, b));
+      if(nextRegion.length && !hasRoute(s.id, nextRegion[0].id)) routes.push([s.id, nextRegion[0].id]);
+    }
+  });
+}
+
+function animate() {
+  camX = lerp(camX, targetCamX, 0.15);
+  camY = lerp(camY, targetCamY, 0.15);
+  zoom = lerp(zoom, targetZoom, 0.15);
+  
+  worldCtx.clearRect(0, 0, screenW, screenH);
+  drawRegions();
+  drawRoutes();
+  drawSystems();
+  
+  requestAnimationFrame(animate);
+}
+
+function drawStarfield() {
+  starfieldCtx.clearRect(0, 0, screenW, screenH);
+  starfieldCtx.fillStyle = '#020509';
+  starfieldCtx.fillRect(0, 0, screenW, screenH);
+  const starCount = Math.floor(screenW * screenH / 300);
+  for(let i = 0; i < starCount; i++) {
+    const x = seededRandom(5000 + i) * screenW, y = seededRandom(5001 + i) * screenH;
+    const size = seededRandom(5002 + i), bright = seededRandom(5003 + i);
+    if(size < 0.3) {
+      starfieldCtx.fillStyle = `rgba(180,210,240,${0.15 + bright * 0.25})`;
+      starfieldCtx.fillRect(x, y, 1, 1);
+    } else {
+      starfieldCtx.fillStyle = `rgba(200,225,255,${0.2 + bright * 0.3})`;
+      starfieldCtx.fillRect(x, y, 1.5, 1.5);
+    }
+  }
+}
+
+function drawRegions() {
+  const baseRadius = 500; 
+  systems.forEach(s => {
+    if(hiddenRegions[s.region]) return;
+    const x = worldToScreenX(s.px), y = worldToScreenY(s.py);
+    const r = baseRadius * zoom;
+    if(x < -r || x > screenW + r || y < -r || y > screenH + r) return;
+    
+    const col = COLORS[s.region];
+    const grad = worldCtx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, col + '1A'); 
+    grad.addColorStop(1, col + '00');
+    
+    worldCtx.fillStyle = grad;
+    worldCtx.beginPath(); worldCtx.arc(x, y, r, 0, Math.PI * 2); worldCtx.fill();
+  });
+}
+
+function drawRoutes() {
+  const pad = 50;
+  routes.forEach(([ai, bi]) => {
+    const a = systems[ai], b = systems[bi];
+    if(!a || !b || hiddenRegions[a.region] || hiddenRegions[b.region]) return;
+    
+    const ax = worldToScreenX(a.px), ay = worldToScreenY(a.py);
+    const bx = worldToScreenX(b.px), by = worldToScreenY(b.py);
+    if((ax < -pad && bx < -pad) || (ax > screenW+pad && bx > screenW+pad)) return;
+
+    const cross = a.region !== b.region;
+    worldCtx.strokeStyle = cross ? '#1a4060' : '#0d2535';
+    worldCtx.lineWidth = cross ? 1.5 : 1;
+    worldCtx.setLineDash(cross ? [5, 5] : [2, 4]);
+    worldCtx.beginPath(); worldCtx.moveTo(ax, ay); worldCtx.lineTo(bx, by); worldCtx.stroke();
+    worldCtx.setLineDash([]);
+  });
+}
+
+function drawSystems() {
+  systems.forEach(s => {
+    if(hiddenRegions[s.region]) return;
+    const x = worldToScreenX(s.px), y = worldToScreenY(s.py);
+    if(x < -30 || x > screenW + 30 || y < -30 || y > screenH + 30) return;
+    
+    const col = COLORS[s.region];
+    const isSel = selectedSystem && selectedSystem.id === s.id;
+    const isStart = startBase && startBase.id === s.id;
+
+    if(isStart) {
+      worldCtx.strokeStyle = '#e8a02080';
+      worldCtx.lineWidth = 1;
+      worldCtx.setLineDash([3, 3]);
+      worldCtx.beginPath(); worldCtx.arc(x, y, 22 * zoom, 0, Math.PI * 2); worldCtx.stroke();
+      worldCtx.setLineDash([]);
+    }
+
+    if(isSel) {
+      worldCtx.strokeStyle = '#ffffff';
+      worldCtx.lineWidth = 2;
+      worldCtx.beginPath(); worldCtx.arc(x, y, 20 * zoom, 0, Math.PI * 2); worldCtx.stroke();
+      const offset = 26 * zoom;
+      worldCtx.beginPath();
+      worldCtx.moveTo(x - offset, y); worldCtx.lineTo(x - 12 * zoom, y);
+      worldCtx.moveTo(x + offset, y); worldCtx.lineTo(x + 12 * zoom, y);
+      worldCtx.moveTo(x, y - offset); worldCtx.lineTo(x, y - 12 * zoom);
+      worldCtx.moveTo(x, y + offset); worldCtx.lineTo(x, y + 12 * zoom);
+      worldCtx.stroke();
+    }
+
+    worldCtx.shadowBlur = 10 * Math.min(zoom, 1.5);
+    worldCtx.shadowColor = isSel ? '#ffffff' : col;
+    
+    const sz = s.isBase ? 6 : 4;
+    worldCtx.fillStyle = isSel ? '#ffffff' : col;
+    worldCtx.beginPath(); worldCtx.arc(x, y, sz * Math.min(zoom, 1.5), 0, Math.PI * 2); worldCtx.fill();
+    worldCtx.shadowBlur = 0; 
+
+    if(zoom > 0.4) {
+      worldCtx.fillStyle = col + 'e6';
+      worldCtx.font = `bold ${Math.max(12, 14 * zoom)}px 'Share Tech Mono', monospace`;
+      worldCtx.fillText(s.name, x + 12, y - 8);
+    }
+  });
+}
+
+function centerView() { targetCamX = WORLD_W / 2; targetCamY = WORLD_H / 2; targetZoom = 0.2; }
+function focusBase() { if(!startBase) return; targetCamX = startBase.px; targetCamY = startBase.py; targetZoom = 0.6; }
+
+function toggleMenu() {
+  document.getElementById('legend-menu').classList.toggle('active');
+}
+
+function toggleRegion(id, el) {
+  hiddenRegions[id] = !hiddenRegions[id];
+  el.classList.toggle('off', !!hiddenRegions[id]);
+}
+
+function selectTarget(s) {
+  selectedSystem = s;
+  const sheet = document.getElementById('bottom-sheet');
+  const idle = document.getElementById('idle-bar');
+  const fab = document.getElementById('fab-container');
+
+  if(s) {
+    document.getElementById('ts-name').textContent = s.name;
+    document.getElementById('ts-region').textContent = REGION_NAMES[s.region];
+    document.getElementById('ts-region').style.color = COLORS[s.region];
+    document.getElementById('ts-poi').textContent = s.poi;
+    document.getElementById('ts-planets').textContent = s.planets;
+    
+    const threatEl = document.getElementById('ts-threat');
+    threatEl.textContent = s.threat + '%';
+    threatEl.style.color = s.threat > 70 ? '#d85a30' : s.threat > 40 ? '#e8a020' : '#1d9e75';
+
+    targetCamX = s.px; targetCamY = s.py;
+    if(targetZoom < 0.5) targetZoom = 0.5;
+
+    sheet.classList.add('active');
+    idle.classList.add('hidden');
+    fab.classList.add('pushed-up');
+  }
+}
+
+function closeTarget() {
+  selectedSystem = null;
+  document.getElementById('bottom-sheet').classList.remove('active');
+  document.getElementById('idle-bar').classList.remove('hidden');
+  document.getElementById('fab-container').classList.remove('pushed-up');
+}
+
+function engageWarp() {
+  const flash = document.getElementById('warp-flash');
+  flash.style.transition = 'none';
+  flash.style.opacity = '1';
+  
+  targetZoom = 3.0;
+  
+  setTimeout(() => {
+    flash.style.transition = 'opacity 1s ease-out';
+    flash.style.opacity = '0';
+    closeTarget();
+    startBase = selectedSystem; 
+    targetZoom = 0.6;
+  }, 100);
+}
+
+function handlePointerDown(x, y) {
+  isDragging = true;
+  dragStartX = x; dragStartY = y;
+  dragStartCamX = targetCamX; dragStartCamY = targetCamY;
+}
+
+function handlePointerMove(x, y) {
+  if(isDragging) {
+    const dx = (x - dragStartX) / zoom;
+    const dy = (y - dragStartY) / zoom;
+    targetCamX = dragStartCamX - dx; targetCamY = dragStartCamY - dy;
+  }
+}
+
+function handlePointerUp(x, y) {
+  if(!isDragging) return;
+  const moved = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
+  isDragging = false;
+  
+  if(moved < 10) { 
+    const rect = document.getElementById('map-wrap').getBoundingClientRect();
+    const mx = x - rect.left, my = y - rect.top;
+    let closest = null, minD = 40 / zoom; 
+    
+    systems.forEach(s => {
+      if(hiddenRegions[s.region]) return;
+      const sd = Math.sqrt((worldToScreenX(s.px) - mx) ** 2 + (worldToScreenY(s.py) - my) ** 2);
+      if(sd < minD) { minD = sd; closest = s; }
+    });
+    
+    if(closest) selectTarget(closest);
+    else closeTarget(); 
+  }
+}
+
+function init() {
+  const wrap = document.getElementById('map-wrap');
+  
+  function resize() {
+    screenW = wrap.clientWidth; screenH = wrap.clientHeight;
+    starfieldCanvas.width = screenW; starfieldCanvas.height = screenH;
+    worldCanvas.width = screenW; worldCanvas.height = screenH;
+    drawStarfield();
+  }
+
+  starfieldCanvas = document.getElementById('starfield');
+  starfieldCtx = starfieldCanvas.getContext('2d');
+  worldCanvas = document.getElementById('world');
+  worldCtx = worldCanvas.getContext('2d');
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const wx = screenToWorldX(mx), wy = screenToWorldY(my);
+    const delta = e.deltaY > 0 ? 0.85 : 1.18;
+    targetZoom = Math.max(0.1, Math.min(3, targetZoom * delta));
+    targetCamX = wx - (mx - screenW / 2) / targetZoom;
+    targetCamY = wy - (my - screenH / 2) / targetZoom;
+  }, { passive: false });
+
+  wrap.addEventListener('mousedown', e => handlePointerDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => handlePointerMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', e => handlePointerUp(e.clientX, e.clientY));
+
+  wrap.addEventListener('touchstart', e => {
+    if(e.touches.length === 1) handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+    else if(e.touches.length === 2) {
+      lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchmove', e => {
+    e.preventDefault(); 
+    if(e.touches.length === 1) handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+    else if(e.touches.length === 2) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const delta = dist / lastTouchDist;
+      targetZoom = Math.max(0.1, Math.min(3, targetZoom * delta));
+      lastTouchDist = dist;
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', e => {
+    if(e.changedTouches.length > 0) handlePointerUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  });
+
+  generateMap();
+  requestAnimationFrame(animate);
+}
+
+setTimeout(init, 100);
+</script>
+</body>
+</html>

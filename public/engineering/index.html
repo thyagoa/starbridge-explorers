@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#020509">
+<title>ENGINEERING // Power Management</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --c-bg: #020509; --c-panel: rgba(6,9,15,0.9); --c-border: #0a2a40;
+    --c-accent: #0e7fc4; --c-accent2: #e8a020; --c-text: #7ab8d8; --c-dim: #2a5070;
+    --c-ok: #1d9e75; --c-warn: #e8a020; --c-crit: #d85a30;
+    --font-mono: 'Share Tech Mono', monospace; --font-disp: 'Orbitron', monospace;
+  }
+  body {
+    background: var(--c-bg); color: var(--c-text); font-family: var(--font-mono);
+    height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* TOP BAR */
+  #top-bar {
+    background: var(--c-panel); border-bottom: 1px solid var(--c-border);
+    padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0; backdrop-filter: blur(6px);
+  }
+  .station-title { font-family: var(--font-disp); font-size: 14px; color: var(--c-accent2); }
+  .station-sub   { font-size: 10px; color: var(--c-dim); margin-top: 2px; }
+
+  .top-stats { display: flex; gap: 16px; align-items: center; }
+  .ts { text-align: right; }
+  .ts-label { font-size: 9px; color: var(--c-dim); text-transform: uppercase; }
+  .ts-val   { font-size: 13px; color: var(--c-text); }
+  .ts-val.warn { color: var(--c-warn); }
+  .ts-val.crit { color: var(--c-crit); }
+
+  #conn-dot { width:8px; height:8px; border-radius:4px; background:var(--c-crit); transition:background 0.3s; }
+  #conn-dot.ok { background: var(--c-ok); }
+
+  /* ENERGY TOTAL BAR */
+  #energy-header {
+    padding: 10px 14px 8px;
+    flex-shrink: 0;
+  }
+  .energy-title { font-family: var(--font-disp); font-size: 11px; letter-spacing:2px; color: var(--c-dim); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .energy-total-bar {
+    height: 8px; background: #0a1520; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--c-border);
+  }
+  .energy-total-fill { height: 100%; background: linear-gradient(90deg,#0e7fc4,#1d9e75); border-radius:4px; transition: width 0.3s; }
+
+  /* SYSTEMS GRID */
+  #systems-list {
+    flex: 1; overflow-y: auto; padding: 6px 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  #systems-list::-webkit-scrollbar { display: none; }
+
+  .sys-card {
+    background: rgba(6,9,15,0.7); border: 1px solid var(--c-border);
+    border-radius: 10px; padding: 10px 12px; transition: border-color 0.2s;
+  }
+  .sys-card.overloading { border-color: var(--c-warn); animation: pulse-warn 1s infinite; }
+  @keyframes pulse-warn { 0%,100% { border-color: var(--c-warn); } 50% { border-color: #c07010; } }
+
+  .sys-row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .sys-name { font-family: var(--font-disp); font-size: 12px; letter-spacing:1px; }
+  .sys-badges { display: flex; gap: 6px; align-items: center; }
+  .badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px; border: 1px solid;
+  }
+  .badge.alloc { border-color: var(--c-accent); color: var(--c-accent); }
+  .badge.health { border-color: var(--c-dim); color: var(--c-dim); }
+  .badge.health.warn  { border-color: var(--c-warn); color: var(--c-warn); }
+  .badge.health.crit  { border-color: var(--c-crit); color: var(--c-crit); }
+  .badge.overload-badge { border-color: var(--c-warn); color: var(--c-warn); font-size:9px; }
+
+  .health-bar {
+    height: 4px; background: #0a1520; border-radius: 2px; overflow: hidden; margin-bottom: 8px;
+  }
+  .health-fill { height: 100%; border-radius:2px; transition: width 0.4s; }
+
+  .sys-row2 { display: flex; gap: 10px; align-items: center; }
+  input[type=range].alloc-slider {
+    -webkit-appearance: none; appearance: none; flex:1; height: 6px;
+    background: var(--c-border); border-radius: 3px; outline: none; cursor: pointer;
+  }
+  input[type=range].alloc-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; border-radius: 10px;
+    background: var(--c-accent); border: 2px solid #fff;
+  }
+
+  .btn-overload {
+    padding: 6px 10px; font-size: 10px; font-family: var(--font-disp); letter-spacing:1px;
+    border: 1px solid var(--c-warn); background: transparent; color: var(--c-warn);
+    border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.2s;
+  }
+  .btn-overload:active  { background: var(--c-warn); color: #000; }
+  .btn-overload.active  { background: rgba(232,160,32,0.2); }
+  .btn-overload:disabled { opacity: 0.3; cursor: default; }
+
+  /* BOTTOM BAR */
+  #bottom-bar {
+    background: var(--c-panel); border-top: 1px solid var(--c-border);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+    display: flex; gap: 10px; flex-shrink: 0;
+  }
+  .btn-action {
+    flex: 1; padding: 12px; border-radius: 8px; font-family: var(--font-disp);
+    font-size: 11px; letter-spacing:1px; text-transform: uppercase; cursor: pointer;
+    border: 1px solid var(--c-accent); background: #0d2535; color: var(--c-text);
+    transition: all 0.2s;
+  }
+  .btn-action:active { background: var(--c-accent); color:#fff; }
+  .btn-action.secondary { border-color: var(--c-dim); color: var(--c-dim); background: transparent; }
+
+  /* ALERT TOAST */
+  #alert-toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--c-crit); color:#fff; font-family: var(--font-disp); font-size: 12px;
+    padding: 10px 20px; border-radius: 20px; opacity: 0; transition: all 0.3s; z-index: 100;
+    pointer-events: none; white-space: nowrap;
+  }
+  #alert-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <div>
+    <div class="station-title">ENGINEERING</div>
+    <div class="station-sub" id="top-sub">Power Management // aguardando...</div>
+  </div>
+  <div class="top-stats">
+    <div class="ts">
+      <div class="ts-label">Hull</div>
+      <div class="ts-val" id="stat-hull">—</div>
+    </div>
+    <div class="ts">
+      <div class="ts-label">Timer</div>
+      <div class="ts-val" id="stat-timer">—</div>
+    </div>
+    <div id="conn-dot"></div>
+  </div>
+</div>
+
+<div id="energy-header">
+  <div class="energy-title">
+    <span>DISTRIBUIÇÃO DE ENERGIA</span>
+    <span id="energy-sum">100 / 100</span>
+  </div>
+  <div class="energy-total-bar">
+    <div class="energy-total-fill" id="energy-fill" style="width:100%"></div>
+  </div>
+</div>
+
+<div id="systems-list">
+  <!-- Cards rendered by JS -->
+</div>
+
+<div id="bottom-bar">
+  <button class="btn-action" onclick="sendStatusToViewscreen()">Enviar Status</button>
+  <button class="btn-action secondary" onclick="balanceEnergy()">Balancear</button>
+</div>
+
+<div id="alert-toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const sessionCode = location.pathname.split('/').pop().toUpperCase();
+
+const SYSTEM_META = {
+  propulsion:  { label: 'PROPULSÃO',   icon: '⚡', canOverload: true  },
+  shields:     { label: 'ESCUDOS',     icon: '🛡', canOverload: true  },
+  lifeSupport: { label: 'SUPORTE VIDA',icon: '♻', canOverload: false },
+  sensors:     { label: 'SENSORES',    icon: '📡', canOverload: true  },
+  navComputer: { label: 'NAV COMP.',   icon: '🖥', canOverload: false },
+};
+const SYSTEM_KEYS = Object.keys(SYSTEM_META);
+
+let allocation = { propulsion:40, shields:20, lifeSupport:20, sensors:10, navComputer:10 };
+let systemHealth = { propulsion:100, shields:100, lifeSupport:100, sensors:100, navComputer:100 };
+let overloads = {};
+let ws = null;
+let connected = false;
+let sendTimeout = null;
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/engineering/${sessionCode}`);
+
+  ws.onopen = () => {
+    connected = true;
+    document.getElementById('conn-dot').classList.add('ok');
+    document.getElementById('top-sub').textContent = 'Power Management // conectado';
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'role_assigned' || msg.type === 'game_state') {
+      if (msg.energy)  applyServerEnergy(msg.energy);
+      if (msg.systems) applyServerSystems(msg.systems);
+      if (msg.ship)    updateTopStats(msg.ship);
+      if (msg.mission) updateTimer(msg.mission);
+    }
+    if (msg.type === 'error') showAlert(msg.reason);
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('conn-dot').classList.remove('ok');
+    document.getElementById('top-sub').textContent = 'Power Management // desconectado';
+    setTimeout(connect, 3000);
+  };
+}
+
+function applyServerEnergy(energy) {
+  allocation = { ...energy.allocation };
+  overloads  = { ...energy.overloads };
+  renderCards();
+}
+function applyServerSystems(systems) {
+  systemHealth = { ...systems };
+  renderCards();
+}
+function updateTopStats(ship) {
+  const el = document.getElementById('stat-hull');
+  el.textContent = Math.round(ship.hull) + '%';
+  el.className = 'ts-val' + (ship.hull < 30 ? ' crit' : ship.hull < 60 ? ' warn' : '');
+}
+function updateTimer(mission) {
+  const t = Math.max(0, Math.round(mission.timer));
+  const m = String(Math.floor(t/60)).padStart(2,'0');
+  const s = String(t%60).padStart(2,'0');
+  const el = document.getElementById('stat-timer');
+  el.textContent = `${m}:${s}`;
+  el.className = 'ts-val' + (t < 60 ? ' crit' : t < 120 ? ' warn' : '');
+}
+
+// ── Energy logic ───────────────────────────────────────────────────────────
+function onSliderChange(key, value) {
+  const oldVal = allocation[key];
+  const delta = value - oldVal;
+  allocation[key] = value;
+
+  // Redistribute delta proportionally among other systems
+  const others = SYSTEM_KEYS.filter(k => k !== key);
+  const otherSum = others.reduce((s, k) => s + allocation[k], 0);
+  if (otherSum > 0) {
+    let remainder = delta;
+    others.forEach((k, i) => {
+      if (i < others.length - 1) {
+        const adj = Math.round((allocation[k] / otherSum) * delta);
+        allocation[k] = Math.max(0, Math.min(systemHealth[k], allocation[k] - adj));
+        remainder -= adj;
+      } else {
+        allocation[k] = Math.max(0, Math.min(systemHealth[k], allocation[k] - remainder));
+      }
+    });
+  }
+
+  // Normalise to exactly 100
+  normalise();
+  renderCards();
+  scheduleServerUpdate();
+}
+
+function normalise() {
+  const sum = SYSTEM_KEYS.reduce((s,k)=>s+allocation[k], 0);
+  if (sum === 0) { SYSTEM_KEYS.forEach(k => allocation[k] = 20); return; }
+  let running = 0;
+  SYSTEM_KEYS.forEach((k, i) => {
+    if (i < SYSTEM_KEYS.length-1) { allocation[k] = Math.round(allocation[k]/sum*100); running += allocation[k]; }
+    else allocation[k] = 100 - running;
+  });
+}
+
+function balanceEnergy() {
+  const each = Math.floor(100 / SYSTEM_KEYS.length);
+  let rem = 100;
+  SYSTEM_KEYS.forEach((k, i) => {
+    allocation[k] = i < SYSTEM_KEYS.length-1 ? Math.min(each, systemHealth[k]) : rem;
+    rem -= allocation[k];
+  });
+  normalise();
+  renderCards();
+  scheduleServerUpdate();
+}
+
+function scheduleServerUpdate() {
+  clearTimeout(sendTimeout);
+  sendTimeout = setTimeout(sendEnergyUpdate, 100);
+}
+
+function sendEnergyUpdate() {
+  if (!connected || !ws) return;
+  ws.send(JSON.stringify({ type: 'energy_update', allocation }));
+}
+
+function triggerOverload(key) {
+  if (!connected || !ws) return;
+  if (!SYSTEM_META[key].canOverload) { showAlert(`${SYSTEM_META[key].label} não pode sofrer overload`); return; }
+  ws.send(JSON.stringify({ type: 'overload', system: key }));
+  showAlert(`OVERLOAD: ${SYSTEM_META[key].label} — dano em 30s`);
+}
+
+function sendStatusToViewscreen() {
+  if (!connected || !ws) return;
+  ws.send(JSON.stringify({
+    type: 'send_to_viewscreen',
+    payload: { view: 'engineering', allocation, systemHealth }
+  }));
+  showAlert('Status enviado para o Viewscreen', 'ok');
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderCards() {
+  const container = document.getElementById('systems-list');
+  const now = Date.now();
+
+  SYSTEM_KEYS.forEach(key => {
+    const meta = SYSTEM_META[key];
+    const alloc  = allocation[key] ?? 0;
+    const health = systemHealth[key] ?? 100;
+    const isOverloading = overloads[key] && overloads[key] > now;
+    const remaining = isOverloading ? Math.ceil((overloads[key] - now) / 1000) : 0;
+
+    let card = document.getElementById(`card-${key}`);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'sys-card';
+      card.id = `card-${key}`;
+      card.innerHTML = `
+        <div class="sys-row1">
+          <div class="sys-name">${meta.icon} ${meta.label}</div>
+          <div class="sys-badges">
+            <span class="badge alloc" id="badge-alloc-${key}">${alloc}%</span>
+            <span class="badge health" id="badge-health-${key}">${health}%</span>
+            ${isOverloading ? `<span class="badge overload-badge" id="badge-ol-${key}">OL ${remaining}s</span>` : ''}
+          </div>
+        </div>
+        <div class="health-bar"><div class="health-fill" id="hbar-${key}" style="width:${health}%;background:${healthColor(health)}"></div></div>
+        <div class="sys-row2">
+          <input type="range" class="alloc-slider" id="slider-${key}" min="0" max="${health}" value="${alloc}" step="1">
+          ${meta.canOverload
+            ? `<button class="btn-overload ${isOverloading?'active':''}" id="btn-ol-${key}" onclick="triggerOverload('${key}')" ${isOverloading?'disabled':''}>OL</button>`
+            : `<button class="btn-overload" disabled title="Não pode sofrer overload" style="opacity:0.2">—</button>`
+          }
+        </div>`;
+      container.appendChild(card);
+
+      document.getElementById(`slider-${key}`).addEventListener('input', (e) => {
+        onSliderChange(key, parseInt(e.target.value));
+      });
+    } else {
+      // Update existing card
+      card.className = 'sys-card' + (isOverloading ? ' overloading' : '');
+      document.getElementById(`badge-alloc-${key}`).textContent = alloc + '%';
+      const hBadge = document.getElementById(`badge-health-${key}`);
+      hBadge.textContent = health + '%';
+      hBadge.className = 'badge health' + (health < 30 ? ' crit' : health < 60 ? ' warn' : '');
+      document.getElementById(`hbar-${key}`).style.cssText = `width:${health}%;background:${healthColor(health)}`;
+      const slider = document.getElementById(`slider-${key}`);
+      slider.max = health;
+      if (document.activeElement !== slider) slider.value = alloc;
+
+      // overload badge
+      let olBadge = document.getElementById(`badge-ol-${key}`);
+      if (isOverloading) {
+        if (!olBadge) {
+          olBadge = document.createElement('span');
+          olBadge.className = 'badge overload-badge';
+          olBadge.id = `badge-ol-${key}`;
+          document.getElementById(`badge-alloc-${key}`).after(olBadge);
+        }
+        olBadge.textContent = `OL ${remaining}s`;
+      } else if (olBadge) {
+        olBadge.remove();
+      }
+
+      const olBtn = document.getElementById(`btn-ol-${key}`);
+      if (olBtn) {
+        olBtn.className = 'btn-overload' + (isOverloading ? ' active' : '');
+        olBtn.disabled = isOverloading;
+      }
+    }
+  });
+
+  // Update energy total bar
+  const sum = SYSTEM_KEYS.reduce((s,k) => s + (allocation[k]??0), 0);
+  document.getElementById('energy-sum').textContent = `${sum} / 100`;
+  document.getElementById('energy-fill').style.width = sum + '%';
+}
+
+function healthColor(h) {
+  if (h < 30) return '#d85a30';
+  if (h < 60) return '#e8a020';
+  return '#1d9e75';
+}
+
+function showAlert(msg, type = 'error') {
+  const el = document.getElementById('alert-toast');
+  el.textContent = msg;
+  el.style.background = type === 'ok' ? 'var(--c-ok)' : 'var(--c-crit)';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Overload countdown (local timer to update badge every second) ──────────
+setInterval(() => {
+  const now = Date.now();
+  SYSTEM_KEYS.forEach(key => {
+    if (overloads[key] && overloads[key] > now) renderCards();
+  });
+}, 1000);
+
+// ── Init ───────────────────────────────────────────────────────────────────
+connect();
+renderCards();
+</script>
+</body>
+</html>

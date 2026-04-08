@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#020509">
+<title>CAPTAIN // Bridge Command</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --c-bg: #020509; --c-panel: rgba(6,9,15,0.9); --c-border: #0a2a40;
+    --c-accent: #0e7fc4; --c-accent2: #e8a020; --c-text: #7ab8d8; --c-dim: #2a5070;
+    --c-ok: #1d9e75; --c-warn: #e8a020; --c-crit: #d85a30;
+    --font-mono: 'Share Tech Mono', monospace; --font-disp: 'Orbitron', monospace;
+  }
+  body {
+    background: var(--c-bg); color: var(--c-text); font-family: var(--font-mono);
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+
+  /* TOP BAR */
+  #top-bar {
+    background: var(--c-panel); border-bottom: 2px solid var(--c-accent2);
+    padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;
+    backdrop-filter: blur(6px); flex-shrink: 0;
+  }
+  .ship-name { font-family: var(--font-disp); font-size: 20px; color: var(--c-accent2); }
+  .station-label { font-size: 11px; color: var(--c-dim); margin-top: 2px; letter-spacing: 2px; }
+  .top-right { display: flex; gap: 20px; align-items: center; }
+  .stat-block { text-align: right; }
+  .stat-block .lbl { font-size: 10px; color: var(--c-dim); text-transform: uppercase; }
+  .stat-block .val { font-size: 16px; color: var(--c-text); font-family: var(--font-disp); }
+  .val.warn { color: var(--c-warn); }
+  .val.crit { color: var(--c-crit); }
+  #conn-dot { width:10px; height:10px; border-radius:5px; background:var(--c-crit); transition:background 0.3s; }
+  #conn-dot.ok { background: var(--c-ok); }
+
+  /* MAIN LAYOUT */
+  #main {
+    flex: 1; display: grid;
+    grid-template-columns: 300px 1fr 280px;
+    grid-template-rows: 1fr;
+    gap: 0; overflow: hidden;
+  }
+
+  /* LEFT PANEL — Mission Briefing */
+  #panel-left {
+    border-right: 1px solid var(--c-border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-title {
+    font-family: var(--font-disp); font-size: 11px; letter-spacing: 2px; color: var(--c-dim);
+    padding: 12px 16px 8px; text-transform: uppercase; border-bottom: 1px solid var(--c-border);
+  }
+
+  #mission-briefing {
+    flex: 1; padding: 16px; overflow-y: auto; font-size: 13px; line-height: 1.7;
+  }
+  .briefing-tag {
+    display: inline-block; font-family: var(--font-disp); font-size: 10px; letter-spacing:1px;
+    padding: 3px 10px; border-radius: 12px; margin-bottom: 12px;
+    border: 1px solid var(--c-accent2); color: var(--c-accent2);
+  }
+  .briefing-title { font-family: var(--font-disp); font-size: 16px; color: var(--c-accent); margin-bottom: 10px; }
+  .briefing-body { color: var(--c-text); font-size: 12px; line-height: 1.8; }
+  .briefing-section { margin-top: 14px; }
+  .briefing-section-title { font-size: 10px; color: var(--c-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .briefing-item { display: flex; gap: 8px; margin-bottom: 4px; font-size: 12px; }
+  .briefing-item::before { content: '▸'; color: var(--c-accent); flex-shrink: 0; }
+
+  #start-btn {
+    margin: 12px 16px 16px;
+    padding: 14px; background: #0d2535; border: 2px solid var(--c-accent);
+    border-radius: 10px; color: var(--c-text); font-family: var(--font-disp);
+    font-size: 14px; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  #start-btn:hover   { background: var(--c-accent); color: #fff; }
+  #start-btn:disabled { opacity: 0.3; cursor: default; background: transparent; }
+  #start-btn.hidden  { display: none; }
+
+  #mission-result {
+    margin: 12px 16px 16px; padding: 14px; border-radius: 10px;
+    font-family: var(--font-disp); font-size: 15px; text-align: center;
+    display: none; letter-spacing: 1px;
+  }
+  #mission-result.won  { display: block; background: rgba(29,158,117,0.15); border: 2px solid var(--c-ok); color: var(--c-ok); }
+  #mission-result.lost { display: block; background: rgba(216,90,48,0.15);  border: 2px solid var(--c-crit); color: var(--c-crit); }
+
+  /* CENTER — Viewscreen */
+  #panel-center {
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #viewscreen-area {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; position: relative; overflow: hidden;
+  }
+  #viewscreen-frame {
+    width: 100%; max-width: 700px; aspect-ratio: 16/9;
+    background: #030810; border: 2px solid var(--c-accent);
+    border-radius: 8px; position: relative; overflow: hidden;
+    box-shadow: 0 0 40px rgba(14,127,196,0.15), inset 0 0 30px rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #viewscreen-label {
+    position: absolute; top: 10px; left: 16px;
+    font-family: var(--font-disp); font-size: 10px; letter-spacing: 2px; color: var(--c-dim);
+  }
+  #viewscreen-content {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; padding: 40px 20px;
+  }
+  .vs-idle-text {
+    font-family: var(--font-disp); font-size: 13px; color: var(--c-dim);
+    letter-spacing: 2px; text-align: center;
+  }
+
+  /* Viewscreen: Engineering display */
+  .vs-eng { width: 100%; padding: 0 10px; }
+  .vs-eng-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+  .vs-eng-name { width: 110px; color: var(--c-dim); font-size: 11px; }
+  .vs-bar-wrap { flex: 1; height: 6px; background: #0a1520; border-radius: 3px; overflow: hidden; }
+  .vs-bar-fill { height: 100%; border-radius: 3px; background: var(--c-accent); }
+  .vs-eng-val { width: 36px; text-align: right; color: var(--c-accent); }
+
+  /* Viewscreen: Helm map placeholder */
+  .vs-helm { text-align: center; color: var(--c-accent); font-size: 12px; }
+  .vs-map-coords { font-size: 11px; color: var(--c-dim); margin-top: 8px; }
+
+  /* Session info below viewscreen */
+  #session-info {
+    padding: 10px 20px 14px; display: flex; justify-content: center; gap: 30px;
+    border-top: 1px solid var(--c-border); flex-shrink: 0;
+  }
+  .si-item { text-align: center; }
+  .si-label { font-size: 10px; color: var(--c-dim); text-transform: uppercase; margin-bottom: 4px; }
+  .si-val   { font-size: 16px; font-family: var(--font-disp); color: var(--c-accent); letter-spacing: 2px; }
+  #qr-img   { width: 80px; height: 80px; border: 2px solid var(--c-border); border-radius: 4px; }
+
+  /* RIGHT PANEL — Crew */
+  #panel-right {
+    border-left: 1px solid var(--c-border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #crew-list { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .crew-card {
+    background: rgba(6,9,15,0.7); border: 1px solid var(--c-border);
+    border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+  }
+  .crew-dot { width: 10px; height: 10px; border-radius: 5px; background: var(--c-dim); flex-shrink: 0; }
+  .crew-dot.online { background: var(--c-ok); }
+  .crew-role { font-family: var(--font-disp); font-size: 12px; }
+  .crew-status { font-size: 11px; color: var(--c-dim); margin-top: 2px; }
+
+  #event-log {
+    border-top: 1px solid var(--c-border); height: 180px;
+    padding: 10px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+  }
+  #event-log::-webkit-scrollbar { display: none; }
+  .log-entry { font-size: 11px; color: var(--c-dim); }
+  .log-entry .ts  { color: #1a3a50; }
+  .log-entry.info { color: var(--c-text); }
+  .log-entry.warn { color: var(--c-warn); }
+  .log-entry.crit { color: var(--c-crit); }
+
+  /* Responsive: collapse side panels on narrow screens */
+  @media (max-width: 900px) {
+    #main { grid-template-columns: 260px 1fr; }
+    #panel-right { display: none; }
+  }
+  @media (max-width: 640px) {
+    #main { grid-template-columns: 1fr; }
+    #panel-left { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <div>
+    <div class="ship-name" id="ship-name-top">—</div>
+    <div class="station-label">CAPITÃO // PONTE DE COMANDO</div>
+  </div>
+  <div class="top-right">
+    <div class="stat-block">
+      <div class="lbl">Hull</div>
+      <div class="val" id="stat-hull">—</div>
+    </div>
+    <div class="stat-block">
+      <div class="lbl">Timer</div>
+      <div class="val" id="stat-timer">—</div>
+    </div>
+    <div class="stat-block">
+      <div class="lbl">Missão</div>
+      <div class="val" id="stat-mission">BRIEFING</div>
+    </div>
+    <div id="conn-dot"></div>
+  </div>
+</div>
+
+<div id="main">
+  <!-- LEFT: Briefing + Start -->
+  <div id="panel-left">
+    <div class="panel-title">Missão Exclusiva — Capitão</div>
+    <div id="mission-briefing">
+      <span class="briefing-tag">MISSÃO 01 // INTERCEÇÃO</span>
+      <div class="briefing-title">Nave Aliada em Rota de Colisão</div>
+      <div class="briefing-body">
+        A nave aliada <strong>UFS Kalon's Reach</strong> foi sabotada e está em rota de colisão com o planeta Dovan IV. Os sistemas de navegação foram comprometidos e a tripulação está incapacitada.
+        <br><br>
+        Você tem <strong>10 minutos</strong> para interceptar a nave antes do impacto. A interceptação requer aproximação a menos de 200 unidades.
+      </div>
+      <div class="briefing-section">
+        <div class="briefing-section-title">Objetivos</div>
+        <div class="briefing-item">Interceptar a Kalon's Reach em até 10 min</div>
+        <div class="briefing-item">Manter a nave intacta (hull > 0)</div>
+      </div>
+      <div class="briefing-section">
+        <div class="briefing-section-title">Inteligência Confidencial</div>
+        <div class="briefing-item">A nave alvo segue rota sudoeste fixa</div>
+        <div class="briefing-item">Velocidade estimada: 0.8 u/s</div>
+        <div class="briefing-item">Origem: Setor Deep Space, posição (1800, 900)</div>
+      </div>
+      <div class="briefing-section">
+        <div class="briefing-section-title">Postos Críticos</div>
+        <div class="briefing-item">Helm — navegação e velocidade</div>
+        <div class="briefing-item">Engenharia — propulsão precisa de energia</div>
+      </div>
+    </div>
+    <button id="start-btn" onclick="startMission()">▶ Iniciar Missão</button>
+    <div id="mission-result"></div>
+  </div>
+
+  <!-- CENTER: Viewscreen -->
+  <div id="panel-center">
+    <div id="viewscreen-area">
+      <div id="viewscreen-frame">
+        <div id="viewscreen-label">VIEWSCREEN</div>
+        <div id="viewscreen-content">
+          <div class="vs-idle-text">AGUARDANDO TRANSMISSÃO<br>DA TRIPULAÇÃO</div>
+        </div>
+      </div>
+    </div>
+    <div id="session-info">
+      <div class="si-item">
+        <div class="si-label">Código da Sessão</div>
+        <div class="si-val" id="session-code">—</div>
+      </div>
+      <div class="si-item">
+        <div class="si-label">QR — Helm / Eng</div>
+        <img id="qr-img" src="" alt="QR Code" style="display:none">
+        <div id="qr-loading" style="width:80px;height:80px;border:1px solid var(--c-border);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--c-dim)">...</div>
+      </div>
+      <div class="si-item">
+        <div class="si-label">Viewscreen URL</div>
+        <div class="si-val" style="font-size:11px" id="vs-url">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Crew + Log -->
+  <div id="panel-right">
+    <div class="panel-title">Tripulação Conectada</div>
+    <div id="crew-list">
+      <!-- Populated by JS -->
+    </div>
+    <div class="panel-title" style="border-top:1px solid var(--c-border)">Log de Eventos</div>
+    <div id="event-log"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const sessionCode = location.pathname.split('/').pop().toUpperCase();
+const ALL_ROLES = ['helm', 'engineering', 'viewscreen'];
+let connected = false;
+let missionStatus = 'briefing';
+let ws = null;
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/captain/${sessionCode}`);
+
+  ws.onopen = () => {
+    connected = true;
+    document.getElementById('conn-dot').classList.add('ok');
+    addLog('Conectado ao servidor.', 'info');
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'role_assigned' || msg.type === 'game_state') {
+      if (msg.ship)    updateShip(msg.ship);
+      if (msg.mission) updateMission(msg.mission);
+      if (msg.connectedRoles) updateCrew(msg.connectedRoles);
+    }
+    if (msg.type === 'players_update') updateCrew(msg.connectedRoles);
+    if (msg.type === 'viewscreen_update') renderViewscreen(msg.from, msg.payload);
+    if (msg.type === 'error') addLog(`Erro: ${msg.reason}`, 'crit');
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('conn-dot').classList.remove('ok');
+    addLog('Desconectado. Reconectando...', 'warn');
+    setTimeout(connect, 3000);
+  };
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function startMission() {
+  if (!connected || !ws) return;
+  ws.send(JSON.stringify({ type: 'mission_start' }));
+}
+
+// ── UI Updates ─────────────────────────────────────────────────────────────
+function updateShip(ship) {
+  document.getElementById('ship-name-top').textContent = ship.name;
+  const hullEl = document.getElementById('stat-hull');
+  hullEl.textContent = Math.round(ship.hull) + '%';
+  hullEl.className = 'val' + (ship.hull < 30 ? ' crit' : ship.hull < 60 ? ' warn' : '');
+}
+
+function updateMission(mission) {
+  const prev = missionStatus;
+  missionStatus = mission.status;
+
+  const t = Math.max(0, Math.round(mission.timer));
+  const m = String(Math.floor(t/60)).padStart(2,'0');
+  const s = String(t%60).padStart(2,'0');
+  const timerEl = document.getElementById('stat-timer');
+  timerEl.textContent = `${m}:${s}`;
+  timerEl.className = 'val' + (t < 60 ? ' crit' : t < 120 ? ' warn' : '');
+
+  const statusEl = document.getElementById('stat-mission');
+  statusEl.textContent = mission.status.toUpperCase();
+  statusEl.className = 'val' + (mission.status === 'active' ? '' : mission.status === 'won' ? ' ok' : ' crit');
+
+  const startBtn = document.getElementById('start-btn');
+  const resultEl = document.getElementById('mission-result');
+
+  if (mission.status === 'active' && prev === 'briefing') {
+    startBtn.classList.add('hidden');
+    addLog('Missão iniciada! Boa sorte, capitão.', 'info');
+  }
+  if (mission.status === 'won' && prev !== 'won') {
+    startBtn.classList.add('hidden');
+    resultEl.className = 'won';
+    resultEl.textContent = '✓ INTERCEPTAÇÃO BEM-SUCEDIDA';
+    addLog('Missão concluída com sucesso!', 'info');
+  }
+  if (mission.status === 'lost' && prev !== 'lost') {
+    startBtn.classList.add('hidden');
+    resultEl.className = 'lost';
+    resultEl.textContent = '✗ MISSÃO FALHOU';
+    addLog('Missão fracassada.', 'crit');
+  }
+
+  if (mission.status === 'briefing') {
+    startBtn.disabled = false;
+  }
+}
+
+function updateCrew(roles) {
+  const list = document.getElementById('crew-list');
+  list.innerHTML = '';
+  ALL_ROLES.forEach(role => {
+    const online = roles.includes(role);
+    const card = document.createElement('div');
+    card.className = 'crew-card';
+    card.innerHTML = `
+      <div class="crew-dot ${online?'online':''}"></div>
+      <div>
+        <div class="crew-role">${role.toUpperCase()}</div>
+        <div class="crew-status">${online ? 'Online' : 'Aguardando...'}</div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function renderViewscreen(from, payload) {
+  const content = document.getElementById('viewscreen-content');
+
+  if (payload.view === 'engineering') {
+    const sysNames = { propulsion:'PROPULSÃO', shields:'ESCUDOS', lifeSupport:'SUPORTE VIDA', sensors:'SENSORES', navComputer:'NAV COMP.' };
+    let html = '<div class="vs-eng">';
+    for (const [key, val] of Object.entries(payload.allocation || {})) {
+      html += `<div class="vs-eng-row">
+        <span class="vs-eng-name">${sysNames[key]||key}</span>
+        <div class="vs-bar-wrap"><div class="vs-bar-fill" style="width:${val}%"></div></div>
+        <span class="vs-eng-val">${val}%</span>
+      </div>`;
+    }
+    html += '</div>';
+    content.innerHTML = html;
+    addLog('Engenharia enviou painel de energia.', 'info');
+  } else if (payload.view === 'helm_map') {
+    const sp = payload.shipPos || {};
+    const tp = payload.targetPos || {};
+    const dist = tp.x ? Math.round(Math.sqrt((sp.x-tp.x)**2+(sp.y-tp.y)**2)) : '—';
+    content.innerHTML = `<div class="vs-helm">
+      <div style="font-size:14px;font-family:var(--font-disp);color:var(--c-accent);margin-bottom:10px">MAPA DE NAVEGAÇÃO</div>
+      <div class="vs-map-coords">◈ NAVIO: (${Math.round(sp.x||0)}, ${Math.round(sp.y||0)})</div>
+      <div class="vs-map-coords" style="color:var(--c-crit)">✦ ALVO: (${Math.round(tp.x||0)}, ${Math.round(tp.y||0)})</div>
+      <div class="vs-map-coords" style="margin-top:8px;color:var(--c-accent2)">DISTÂNCIA: ${dist} u</div>
+    </div>`;
+    addLog('Helm enviou mapa de navegação.', 'info');
+  } else {
+    content.innerHTML = `<div class="vs-idle-text">${from.toUpperCase()} // TRANSMISSÃO RECEBIDA</div>`;
+    addLog(`${from} enviou dados para o viewscreen.`, 'info');
+  }
+}
+
+// ── Session info + QR ──────────────────────────────────────────────────────
+function setupSessionInfo() {
+  document.getElementById('session-code').textContent = sessionCode;
+  const base = `${location.protocol}//${location.host}`;
+  const helmUrl = `${base}/helm/${sessionCode}`;
+  document.getElementById('vs-url').textContent = `/viewscreen/${sessionCode}`;
+
+  // Fetch QR for helm URL
+  fetch(`/api/qr?url=${encodeURIComponent(helmUrl)}`)
+    .then(r => r.json())
+    .then(data => {
+      const img = document.getElementById('qr-img');
+      img.src = data.dataUrl;
+      img.style.display = 'block';
+      document.getElementById('qr-loading').style.display = 'none';
+    })
+    .catch(() => {
+      document.getElementById('qr-loading').textContent = 'QR indisponível';
+    });
+}
+
+// ── Event log ──────────────────────────────────────────────────────────────
+function addLog(text, type = 'normal') {
+  const log = document.getElementById('event-log');
+  const now = new Date();
+  const ts = `${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  entry.innerHTML = `<span class="ts">[${ts}]</span> ${text}`;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+setupSessionInfo();
+connect();
+</script>
+</body>
+</html>

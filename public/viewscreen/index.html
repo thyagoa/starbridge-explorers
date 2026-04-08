@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#020509">
+<title>STARBRIDGE // Viewscreen</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --c-bg: #020509; --c-border: #0a2a40; --c-accent: #0e7fc4; --c-accent2: #e8a020;
+    --c-text: #7ab8d8; --c-dim: #2a5070;
+    --c-ok: #1d9e75; --c-warn: #e8a020; --c-crit: #d85a30;
+    --font-mono: 'Share Tech Mono', monospace; --font-disp: 'Orbitron', monospace;
+  }
+  html, body {
+    background: var(--c-bg); color: var(--c-text); font-family: var(--font-mono);
+    height: 100vh; width: 100vw; overflow: hidden; display: flex; flex-direction: column;
+  }
+
+  /* SCANLINE effect */
+  #scanline { position: fixed; top: 0; left: 0; width: 100%; height: 2px;
+    background: rgba(14,127,196,0.06); animation: scan 8s linear infinite; pointer-events: none; z-index: 999; }
+  @keyframes scan { from { top: 0; } to { top: 100%; } }
+  #vignette { position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(2,5,9,0.7) 100%); z-index: 998; }
+
+  /* HEADER */
+  #header {
+    border-bottom: 1px solid var(--c-border); padding: 10px 24px;
+    display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .ship-name { font-family: var(--font-disp); font-size: 18px; color: var(--c-accent2); }
+  .vs-label  { font-size: 10px; color: var(--c-dim); letter-spacing: 2px; }
+  .header-stats { display: flex; gap: 28px; align-items: center; }
+  .hs { text-align: right; }
+  .hs-lbl { font-size: 9px; color: var(--c-dim); text-transform: uppercase; }
+  .hs-val { font-size: 15px; font-family: var(--font-disp); }
+  .hs-val.warn { color: var(--c-warn); }
+  .hs-val.crit { color: var(--c-crit); }
+
+  /* MAIN DISPLAY */
+  #main-display {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 20px; position: relative;
+  }
+
+  /* Idle state */
+  #idle-state {
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  .idle-title { font-family: var(--font-disp); font-size: 32px; color: var(--c-accent); letter-spacing: 4px; }
+  .idle-subtitle { font-size: 13px; color: var(--c-dim); letter-spacing: 2px; }
+  .idle-code { font-family: var(--font-disp); font-size: 24px; color: var(--c-accent2); letter-spacing: 6px;
+    border: 1px solid var(--c-accent2); padding: 10px 28px; border-radius: 4px; }
+  .idle-hint { font-size: 11px; color: var(--c-dim); }
+
+  /* Content panels */
+  #content-area { width: 100%; max-width: 1000px; display: none; }
+  #content-area.active { display: block; }
+
+  .content-title {
+    font-family: var(--font-disp); font-size: 11px; letter-spacing: 3px; color: var(--c-dim);
+    margin-bottom: 16px; text-transform: uppercase; display: flex; align-items: center; gap: 10px;
+  }
+  .content-title::before { content: ''; flex: 1; height: 1px; background: var(--c-border); }
+  .content-title::after  { content: ''; flex: 1; height: 1px; background: var(--c-border); }
+
+  /* Engineering display */
+  #eng-display { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .eng-card {
+    background: rgba(6,9,15,0.8); border: 1px solid var(--c-border); border-radius: 10px; padding: 14px 16px;
+  }
+  .eng-card-name { font-family: var(--font-disp); font-size: 12px; color: var(--c-dim); margin-bottom: 8px; letter-spacing:1px; }
+  .eng-bar-wrap { height: 10px; background: #0a1520; border-radius: 5px; overflow: hidden; margin-bottom: 6px; }
+  .eng-bar-fill { height: 100%; border-radius:5px; transition: width 0.5s; }
+  .eng-vals { display: flex; justify-content: space-between; font-size: 11px; color: var(--c-dim); }
+
+  /* Helm map display */
+  #helm-display { text-align: center; }
+  .helm-data-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px; }
+  .hd-card {
+    background: rgba(6,9,15,0.8); border: 1px solid var(--c-border); border-radius: 10px; padding: 20px;
+  }
+  .hd-label { font-size: 11px; color: var(--c-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .hd-val   { font-family: var(--font-disp); font-size: 22px; }
+  .hd-val.accent  { color: var(--c-accent);  }
+  .hd-val.accent2 { color: var(--c-accent2); }
+  .hd-val.crit    { color: var(--c-crit);    }
+
+  /* Mission result overlay */
+  #mission-overlay {
+    position: fixed; inset: 0; display: none;
+    align-items: center; justify-content: center; z-index: 100;
+    background: rgba(2,5,9,0.85); backdrop-filter: blur(4px);
+  }
+  #mission-overlay.active { display: flex; }
+  .result-box {
+    text-align: center; padding: 60px 80px; border-radius: 16px; border: 3px solid;
+    animation: fadeIn 0.6s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
+  .result-box.won  { border-color: var(--c-ok);   background: rgba(29,158,117,0.1); }
+  .result-box.lost { border-color: var(--c-crit);  background: rgba(216,90,48,0.1); }
+  .result-title { font-family: var(--font-disp); font-size: 36px; letter-spacing: 4px; margin-bottom: 16px; }
+  .result-sub   { font-size: 14px; color: var(--c-dim); letter-spacing: 2px; }
+
+  /* FOOTER */
+  #footer {
+    border-top: 1px solid var(--c-border); padding: 8px 24px;
+    display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+    font-size: 11px; color: var(--c-dim);
+  }
+  #last-update { transition: color 0.3s; }
+  #last-update.flash { color: var(--c-accent); }
+
+  #conn-indicator { display: flex; align-items: center; gap: 6px; }
+  #conn-dot2 { width:7px; height:7px; border-radius:50%; background:var(--c-crit); transition:background 0.3s; }
+  #conn-dot2.ok { background: var(--c-ok); }
+</style>
+</head>
+<body>
+<div id="scanline"></div>
+<div id="vignette"></div>
+
+<div id="header">
+  <div class="header-left">
+    <div>
+      <div class="ship-name" id="hdr-ship">STARBRIDGE EXPLORERS</div>
+      <div class="vs-label">VIEWSCREEN // PONTE DE COMANDO</div>
+    </div>
+  </div>
+  <div class="header-stats">
+    <div class="hs"><div class="hs-lbl">Hull</div><div class="hs-val" id="hdr-hull">—</div></div>
+    <div class="hs"><div class="hs-lbl">Timer</div><div class="hs-val" id="hdr-timer">—</div></div>
+    <div class="hs"><div class="hs-lbl">Missão</div><div class="hs-val" id="hdr-mission">—</div></div>
+    <div id="conn-indicator">
+      <div id="conn-dot2"></div>
+      <span id="conn-label">Offline</span>
+    </div>
+  </div>
+</div>
+
+<div id="main-display">
+  <!-- Idle -->
+  <div id="idle-state">
+    <div class="idle-title">STARBRIDGE</div>
+    <div class="idle-subtitle">EXPLORERS // COOPERATIVE SPACE MISSION</div>
+    <div>
+      <div class="idle-hint" style="margin-bottom:8px">CÓDIGO DA SESSÃO</div>
+      <div class="idle-code" id="idle-code">—</div>
+    </div>
+    <div class="idle-hint">Aguardando transmissão da tripulação...</div>
+  </div>
+
+  <!-- Content sent by crew -->
+  <div id="content-area">
+    <div class="content-title" id="content-source">TRANSMISSÃO</div>
+    <div id="eng-display" style="display:none"></div>
+    <div id="helm-display" style="display:none"></div>
+    <div id="generic-display" style="display:none;text-align:center;font-size:18px;color:var(--c-text)"></div>
+  </div>
+</div>
+
+<div id="footer">
+  <span id="last-update">Aguardando dados...</span>
+  <span>VIEWSCREEN v1.0</span>
+  <div id="conn-indicator" style="display:flex;gap:6px;align-items:center">
+    <div id="conn-dot2"></div>
+    <span id="conn-label">Offline</span>
+  </div>
+</div>
+
+<!-- Mission result overlay -->
+<div id="mission-overlay">
+  <div class="result-box" id="result-box">
+    <div class="result-title" id="result-title">—</div>
+    <div class="result-sub"  id="result-sub">—</div>
+  </div>
+</div>
+
+<script>
+const sessionCode = location.pathname.split('/').pop().toUpperCase();
+document.getElementById('idle-code').textContent = sessionCode;
+
+let ws = null;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/viewscreen/${sessionCode}`);
+
+  ws.onopen = () => {
+    document.getElementById('conn-dot2').classList.add('ok');
+    document.getElementById('conn-label').textContent = 'Online';
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'role_assigned' || msg.type === 'game_state') {
+      if (msg.ship)    updateHeader(msg.ship);
+      if (msg.mission) updateMission(msg.mission);
+    }
+    if (msg.type === 'viewscreen_update') {
+      renderContent(msg.from, msg.payload);
+      flashUpdate();
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('conn-dot2').classList.remove('ok');
+    document.getElementById('conn-label').textContent = 'Offline';
+    setTimeout(connect, 3000);
+  };
+}
+
+function updateHeader(ship) {
+  document.getElementById('hdr-ship').textContent = ship.name;
+  const el = document.getElementById('hdr-hull');
+  el.textContent = Math.round(ship.hull) + '%';
+  el.className = 'hs-val' + (ship.hull < 30 ? ' crit' : ship.hull < 60 ? ' warn' : '');
+}
+
+function updateMission(mission) {
+  const t = Math.max(0, Math.round(mission.timer));
+  const m = String(Math.floor(t/60)).padStart(2,'0');
+  const s = String(t%60).padStart(2,'0');
+  const timerEl = document.getElementById('hdr-timer');
+  timerEl.textContent = `${m}:${s}`;
+  timerEl.className = 'hs-val' + (t < 60 ? ' crit' : t < 120 ? ' warn' : '');
+
+  const missionEl = document.getElementById('hdr-mission');
+  missionEl.textContent = mission.status.toUpperCase();
+
+  if (mission.status === 'won')  showResult('won',  '✓ INTERCEPTAÇÃO', 'MISSÃO CONCLUÍDA COM SUCESSO');
+  if (mission.status === 'lost') showResult('lost', '✗ MISSÃO FALHOU', 'O TEMPO ACABOU OU A NAVE FOI DESTRUÍDA');
+}
+
+function renderContent(from, payload) {
+  document.getElementById('idle-state').style.display = 'none';
+  document.getElementById('content-area').classList.add('active');
+  document.getElementById('content-source').textContent = from.toUpperCase() + ' // TRANSMISSÃO';
+
+  // Hide all sub-displays
+  document.getElementById('eng-display').style.display = 'none';
+  document.getElementById('helm-display').style.display = 'none';
+  document.getElementById('generic-display').style.display = 'none';
+
+  if (payload.view === 'engineering') {
+    renderEngineering(payload);
+  } else if (payload.view === 'helm_map') {
+    renderHelmMap(payload);
+  } else {
+    const el = document.getElementById('generic-display');
+    el.style.display = 'block';
+    el.textContent = JSON.stringify(payload, null, 2);
+  }
+}
+
+function renderEngineering(payload) {
+  const sysNames = { propulsion:'PROPULSÃO', shields:'ESCUDOS', lifeSupport:'SUPORTE VIDA', sensors:'SENSORES', navComputer:'NAV COMP.' };
+  const container = document.getElementById('eng-display');
+  container.style.display = 'grid';
+  container.innerHTML = '';
+
+  for (const [key, alloc] of Object.entries(payload.allocation || {})) {
+    const health = payload.systemHealth?.[key] ?? 100;
+    const color = health < 30 ? '#d85a30' : health < 60 ? '#e8a020' : '#0e7fc4';
+    const card = document.createElement('div');
+    card.className = 'eng-card';
+    card.innerHTML = `
+      <div class="eng-card-name">${sysNames[key]||key}</div>
+      <div class="eng-bar-wrap">
+        <div class="eng-bar-fill" style="width:${alloc}%;background:${color}"></div>
+      </div>
+      <div class="eng-vals">
+        <span>Energia: <strong style="color:${color}">${alloc}%</strong></span>
+        <span>Saúde: <strong style="color:${color}">${health}%</strong></span>
+      </div>`;
+    container.appendChild(card);
+  }
+}
+
+function renderHelmMap(payload) {
+  const container = document.getElementById('helm-display');
+  container.style.display = 'block';
+  const sp = payload.shipPos  || { x: 0, y: 0 };
+  const tp = payload.targetPos || null;
+  const dist = tp ? Math.round(Math.sqrt((sp.x-tp.x)**2+(sp.y-tp.y)**2)) : '—';
+  const distClass = dist !== '—' && dist < 200 ? 'crit' : dist < 600 ? 'accent2' : 'accent';
+
+  container.innerHTML = `
+    <div class="content-title" style="margin-bottom:20px">NAVEGAÇÃO // MAPA OPERACIONAL</div>
+    <div class="helm-data-grid">
+      <div class="hd-card">
+        <div class="hd-label">Posição do Navio</div>
+        <div class="hd-val accent">◈</div>
+        <div style="font-size:13px;color:var(--c-dim);margin-top:6px">(${Math.round(sp.x)}, ${Math.round(sp.y)})</div>
+      </div>
+      <div class="hd-card">
+        <div class="hd-label">Posição do Alvo</div>
+        <div class="hd-val crit">✦</div>
+        <div style="font-size:13px;color:var(--c-dim);margin-top:6px">${tp ? `(${Math.round(tp.x)}, ${Math.round(tp.y)})` : '—'}</div>
+      </div>
+      <div class="hd-card">
+        <div class="hd-label">Distância ao Alvo</div>
+        <div class="hd-val ${distClass}">${dist} u</div>
+        <div style="font-size:11px;color:var(--c-dim);margin-top:6px">interceptação &lt; 200 u</div>
+      </div>
+    </div>`;
+}
+
+function showResult(type, title, sub) {
+  const overlay = document.getElementById('mission-overlay');
+  const box     = document.getElementById('result-box');
+  document.getElementById('result-title').textContent = title;
+  document.getElementById('result-sub').textContent   = sub;
+  box.className = `result-box ${type}`;
+  overlay.classList.add('active');
+}
+
+function flashUpdate() {
+  const el = document.getElementById('last-update');
+  const now = new Date();
+  el.textContent = `Última atualização: ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 500);
+}
+
+connect();
+</script>
+</body>
+</html>
