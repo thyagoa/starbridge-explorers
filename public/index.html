@@ -196,6 +196,11 @@ function joinSession() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !document.getElementById('join-btn').disabled) joinSession();
 });
+
+fetch('/api/version').then(r => r.json()).then(d => {
+  document.getElementById('app-version').textContent = 'v' + d.version;
+}).catch(() => {});
 </script>
+<div id="app-version" style="position:fixed;bottom:6px;right:10px;font-size:9px;color:#1a3a50;pointer-events:none;z-index:9999"></div>
 </body>
 </html>

@@ -126,6 +126,13 @@ describe('WebSocket: join_session → role_assigned', () => {
     expect(msg.mapData.routes).toBeInstanceOf(Array);
   });
 
+  test('role_assigned includes version string', async () => {
+    const { version } = require('../../package.json');
+    ws = await wsConnect('captain', session.code);
+    const msg = await nextMessage(ws);
+    expect(msg.version).toBe(version);
+  });
+
   test('connecting to unknown code closes with error', (done) => {
     const ws = new WebSocket(`${wsUrl}/ws/helm/ZZZZ-0000`);
     ws.once('message', (data) => {

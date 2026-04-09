@@ -40,6 +40,24 @@ afterAll((done) => {
   wss.close(() => httpServer.close(done));
 });
 
+// ─── /api/version ──────────────────────────────────────────────────────────
+
+describe('GET /api/version', () => {
+  test('returns current version string', async () => {
+    const res = await httpRequest('/api/version');
+    expect(res.status).toBe(200);
+    const data = res.json();
+    expect(typeof data.version).toBe('string');
+    expect(data.version.length).toBeGreaterThan(0);
+  });
+
+  test('version matches package.json', async () => {
+    const { version } = require('../../package.json');
+    const res = await httpRequest('/api/version');
+    expect(res.json().version).toBe(version);
+  });
+});
+
 // ─── Station HTML routes ───────────────────────────────────────────────────
 
 describe('GET /captain/:code', () => {

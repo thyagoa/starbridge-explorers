@@ -18,6 +18,7 @@ const {
 
 const { MAP_SYSTEMS, MAP_ROUTES } = require('./mission1');
 
+const { version } = require('../package.json');
 const PORT = process.env.PORT || 3000;
 
 // ─── Express app ───────────────────────────────────────────────────────────
@@ -43,6 +44,11 @@ app.get('/engineering/:code', (req, res) => {
 });
 app.get('/viewscreen/:code', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'viewscreen', 'index.html'));
+});
+
+// REST: version
+app.get('/api/version', (req, res) => {
+  res.json({ version });
 });
 
 // REST: create new session
@@ -108,6 +114,7 @@ wss.on('connection', (ws, req) => {
     type: 'role_assigned',
     role,
     code,
+    version,
     mapData: { systems: MAP_SYSTEMS, routes: MAP_ROUTES },
   }));
 

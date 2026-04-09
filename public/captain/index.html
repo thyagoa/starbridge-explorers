@@ -295,6 +295,7 @@ function connect() {
     const msg = JSON.parse(e.data);
     if (msg.type === 'role_assigned' || msg.type === 'game_state') {
       latestGameState = msg;
+      if (msg.version) document.getElementById('app-version').textContent = 'v' + msg.version;
       if (msg.ship)    updateShip(msg.ship);
       if (msg.mission) updateMission(msg.mission);
       if (msg.connectedRoles) updateCrew(msg.connectedRoles);
@@ -477,5 +478,6 @@ function addLog(text, type = 'normal') {
 setupSessionInfo();
 connect();
 </script>
+<div id="app-version" style="position:fixed;bottom:6px;right:10px;font-size:9px;color:#1a3a50;pointer-events:none;z-index:9999"></div>
 </body>
 </html>

@@ -177,6 +177,7 @@ function connect() {
 
     if (msg.type === 'role_assigned' || msg.type === 'game_state') {
       latestGameState = msg;
+      if (msg.version) document.getElementById('app-version').textContent = 'v' + msg.version;
       updateHeader(msg.ship, msg.mission);
       // If a view is already on screen, re-render it with fresh server data
       if (currentView) refreshCurrentView(msg);
@@ -357,7 +358,14 @@ function flashUpdate() {
   setTimeout(() => el.classList.remove('flash'), 500);
 }
 
+// Refresh do conteúdo atual a cada 1s com os dados mais recentes em memória.
+// Garante que o viewscreen fique sincronizado mesmo sem novas mensagens do servidor.
+setInterval(() => {
+  if (currentView && latestGameState) refreshCurrentView(latestGameState);
+}, 1000);
+
 connect();
 </script>
+<div id="app-version" style="position:fixed;bottom:6px;right:10px;font-size:9px;color:#1a3a50;pointer-events:none;z-index:9999"></div>
 </body>
 </html>

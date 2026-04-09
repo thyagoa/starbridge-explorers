@@ -210,6 +210,7 @@ function connect() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'role_assigned' || msg.type === 'game_state') {
+      if (msg.version) document.getElementById('app-version').textContent = 'v' + msg.version;
       if (msg.mapData) loadMap(msg.mapData);
       if (msg.ship)   updateShipState(msg.ship);
       if (msg.energy) updateEnergy(msg.energy);
@@ -506,5 +507,6 @@ function init() {
 
 setTimeout(init, 100);
 </script>
+<div id="app-version" style="position:fixed;bottom:6px;right:10px;font-size:9px;color:#1a3a50;pointer-events:none;z-index:9999"></div>
 </body>
 </html>

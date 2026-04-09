@@ -203,6 +203,7 @@ let systemHealth = { propulsion:100, shields:100, lifeSupport:100, sensors:100, 
 let overloads    = {};
 let ws = null, connected = false;
 let sendTimeout  = null;
+let dragging     = false; // true while user is touching/dragging any slider
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 function connect() {
@@ -217,7 +218,12 @@ function connect() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'role_assigned' || msg.type === 'game_state') {
-      if (msg.energy)  { allocation = { ...msg.energy.allocation }; overloads = { ...msg.energy.overloads }; }
+      if (msg.version) document.getElementById('app-version').textContent = 'v' + msg.version;
+      if (msg.energy)  {
+        // Só sobrescreve allocation se o usuário não está arrastando um slider
+        if (!dragging) allocation = { ...msg.energy.allocation };
+        overloads = { ...msg.energy.overloads };
+      }
       if (msg.systems) systemHealth = { ...msg.systems };
       if (msg.ship)    updateTopStats(msg.ship);
       if (msg.mission) updateTimer(msg.mission);
@@ -334,9 +340,11 @@ function renderCard(key) {
           ${!meta.canOverload ? 'disabled style="opacity:0.15"' : ''}>OL</button>
       </div>`;
     document.getElementById('systems-list').appendChild(card);
-    document.getElementById(`slider-${key}`).addEventListener('input', (e) => {
-      onSliderChange(key, parseInt(e.target.value));
-    });
+    const sl = document.getElementById(`slider-${key}`);
+    sl.addEventListener('input',        (e) => onSliderChange(key, parseInt(e.target.value)));
+    sl.addEventListener('pointerdown',  () => { dragging = true; });
+    sl.addEventListener('pointerup',    () => { dragging = false; });
+    sl.addEventListener('pointercancel',() => { dragging = false; });
   }
 
   // Update badges
@@ -351,10 +359,10 @@ function renderCard(key) {
   document.getElementById(`hbar-${key}`).style.cssText =
     `width:${health}%;background:${health < 30 ? '#d85a30' : health < 60 ? '#e8a020' : '#1d9e75'}`;
 
-  // Update slider (only if not being actively touched)
+  // Update slider (nunca enquanto o usuário estiver arrastando)
   const slider = document.getElementById(`slider-${key}`);
   slider.max = health;
-  if (document.activeElement !== slider) slider.value = alloc;
+  if (!dragging) slider.value = alloc;
 
   // Update overload button
   const olBtn = document.getElementById(`btn-ol-${key}`);
@@ -381,5 +389,6 @@ setInterval(() => { SYSTEM_KEYS.forEach(k => { if (overloads[k] && overloads[k] 
 connect();
 renderAll();
 </script>
+<div id="app-version" style="position:fixed;bottom:6px;right:10px;font-size:9px;color:#1a3a50;pointer-events:none;z-index:9999"></div>
 </body>
 </html>
