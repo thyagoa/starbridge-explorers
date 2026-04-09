@@ -7,6 +7,8 @@ const {
   joinSession,
   removePlayer,
   gameStateSnapshot,
+  handleMessage,
+  startTick,
 } = require('../../server/session');
 
 describe('Session management', () => {
@@ -141,5 +143,85 @@ describe('gameStateSnapshot', () => {
     joinSession(session, 'captain', ws);
     const snap = gameStateSnapshot(session);
     expect(snap.connectedRoles).toContain('captain');
+  });
+});
+
+describe('handleMessage', () => {
+  let session;
+
+  beforeEach(() => { session = createSession(); });
+  afterEach(() => { deleteSession(session.code); });
+
+  test('returns false for unknown message type', () => {
+    expect(handleMessage(session, 'captain', JSON.stringify({ type: 'unknown_xyz' }))).toBe(false);
+  });
+
+  test('returns false for malformed JSON', () => {
+    expect(handleMessage(session, 'captain', 'not json at all')).toBe(false);
+  });
+
+  test('returns true for known message type', () => {
+    // helm_input is always accepted regardless of mission status
+    const result = handleMessage(session, 'helm', JSON.stringify({ type: 'helm_input', heading: 45, velocity: 0.5 }));
+    expect(result).toBe(true);
+    expect(session.ship.heading).toBe(45);
+  });
+});
+
+describe('startTick', () => {
+  let session;
+
+  beforeEach(() => { session = createSession(); });
+  afterEach(() => {
+    if (session.tickInterval) clearInterval(session.tickInterval);
+    deleteSession(session.code);
+    jest.useRealTimers();
+  });
+
+  test('does not start a second interval if already running', () => {
+    const spy = jest.spyOn(global, 'setInterval');
+    startTick(session);
+    startTick(session);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  test('broadcasts game_state on each tick when mission is active', () => {
+    jest.useFakeTimers();
+    const mockWs = { readyState: 1, send: jest.fn() };
+    joinSession(session, 'captain', mockWs);
+    session.mission.status = 'active';
+
+    startTick(session);
+    jest.advanceTimersByTime(2000);
+
+    expect(mockWs.send).toHaveBeenCalled();
+    const msg = JSON.parse(mockWs.send.mock.calls[0][0]);
+    expect(msg.type).toBe('game_state');
+  });
+
+  test('does not broadcast when mission is not active', () => {
+    jest.useFakeTimers();
+    const mockWs = { readyState: 1, send: jest.fn() };
+    joinSession(session, 'captain', mockWs);
+    // status is 'briefing' by default
+
+    startTick(session);
+    jest.advanceTimersByTime(2000);
+
+    expect(mockWs.send).not.toHaveBeenCalled();
+  });
+
+  test('clears itself when mission ends (hull = 0)', () => {
+    jest.useFakeTimers();
+    const mockWs = { readyState: 1, send: jest.fn() };
+    joinSession(session, 'captain', mockWs);
+    session.mission.status = 'active';
+    session.ship.hull = 0;
+
+    startTick(session);
+    jest.advanceTimersByTime(2000);
+
+    expect(session.tickInterval).toBeNull();
   });
 });

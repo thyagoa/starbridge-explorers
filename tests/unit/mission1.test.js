@@ -227,4 +227,59 @@ describe('tickMission — life support hull decay', () => {
     tickMission(session, effectiveEnergy, 2000); // lifeSupport = 20 (default, above 10)
     expect(session.mission.lifeSupportLowSince).toBeNull();
   });
+
+  test('sets lifeSupportLowSince when life support first goes critical', () => {
+    const lowEnergy = {
+      ...defaultEnergy(),
+      allocation: { ...defaultEnergy().allocation, lifeSupport: 3 }, // below LIFE_SUPPORT_CRITICAL
+    };
+    const session = makeSession({ energy: lowEnergy });
+    expect(session.mission.lifeSupportLowSince).toBeNull();
+
+    const before = Date.now();
+    tickMission(session, effectiveEnergy, 2000);
+
+    expect(session.mission.lifeSupportLowSince).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('tickMission — reactor overload hull decay', () => {
+  function makeOverloadedSession() {
+    // Total allocation = 115 > reactorOutput (100)
+    const energy = {
+      ...defaultEnergy(),
+      allocation: { propulsion: 40, shields: 30, lifeSupport: 20, sensors: 15, navComputer: 10 },
+    };
+    return makeSession({ energy });
+  }
+
+  test('hull decays when total load exceeds reactor output', () => {
+    const session = makeOverloadedSession();
+    const hullBefore = session.ship.hull;
+    tickMission(session, effectiveEnergy, 2000);
+    expect(session.ship.hull).toBeLessThan(hullBefore);
+  });
+
+  test('decay is proportional to excess load', () => {
+    // excess = 115 - 100 = 15; overloadDecay = (15/100) * 0.5 * 2 = 0.15
+    const session = makeOverloadedSession();
+    tickMission(session, effectiveEnergy, 2000);
+    expect(session.ship.hull).toBeCloseTo(100 - 0.15, 5);
+  });
+
+  test('resets reactorOverloadSince when load returns to normal', () => {
+    const session = makeOverloadedSession();
+    session.mission.reactorOverloadSince = Date.now() - 5_000;
+    // Restore normal allocation
+    session.energy.allocation = defaultEnergy().allocation; // sum = 90
+    tickMission(session, effectiveEnergy, 2000);
+    expect(session.mission.reactorOverloadSince).toBeNull();
+  });
+
+  test('hull does not decay when load is within reactor output', () => {
+    const session = makeSession(); // default allocation sum = 90 < 100
+    const hullBefore = session.ship.hull;
+    tickMission(session, effectiveEnergy, 2000);
+    expect(session.ship.hull).toBe(hullBefore);
+  });
 });

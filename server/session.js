@@ -231,7 +231,10 @@ function startTick(session) {
       clearInterval(session.tickInterval);
       session.tickInterval = null;
     }
-  }, TICK_INTERVAL_MS).unref(); // don't prevent Node process from exiting (e.g. in tests)
+  }, TICK_INTERVAL_MS);
+  // Allow process to exit when this is the only remaining timer (e.g. in tests).
+  // unref() may not exist on fake timer objects, so guard with optional chaining.
+  session.tickInterval?.unref?.();
 }
 
 // ─── Message handlers ──────────────────────────────────────────────────────

@@ -275,3 +275,63 @@ describe('WebSocket: send_to_viewscreen', () => {
     expect(vsMsg.payload).toEqual(payload);
   });
 });
+
+describe('WebSocket: overload', () => {
+  let session;
+  let engWs;
+
+  beforeEach(async () => {
+    session = createSession();
+    engWs = await wsConnect('engineering', session.code);
+    await nextMessage(engWs); // consume role_assigned
+  });
+
+  afterEach(async () => {
+    await closeWs(engWs);
+    deleteSession(session.code);
+  });
+
+  test('overload message damages the target system by 10', async () => {
+    engWs.send(JSON.stringify({ type: 'overload', system: 'shields' }));
+    const msg = await nextMessage(engWs);
+    expect(msg.type).toBe('game_state');
+    expect(msg.systems.shields).toBe(90);
+  });
+
+  test('overload sets an active overload entry for the system', async () => {
+    engWs.send(JSON.stringify({ type: 'overload', system: 'propulsion' }));
+    const msg = await nextMessage(engWs);
+    expect(msg.energy.overloads.propulsion).toBeGreaterThan(Date.now());
+  });
+
+  test('duplicate overload on same system is ignored', async () => {
+    engWs.send(JSON.stringify({ type: 'overload', system: 'sensors' }));
+    await nextMessage(engWs); // first overload → 90 health
+    engWs.send(JSON.stringify({ type: 'overload', system: 'sensors' }));
+    const msg = await nextMessage(engWs);
+    expect(msg.systems.sensors).toBe(90); // still 90, no extra damage
+  });
+});
+
+describe('WebSocket: unknown message type', () => {
+  let session;
+  let captainWs;
+
+  beforeEach(async () => {
+    session = createSession();
+    captainWs = await wsConnect('captain', session.code);
+    await nextMessage(captainWs);
+  });
+
+  afterEach(async () => {
+    await closeWs(captainWs);
+    deleteSession(session.code);
+  });
+
+  test('unknown message type is silently ignored (no broadcast)', async () => {
+    captainWs.send(JSON.stringify({ type: 'does_not_exist' }));
+    // No response should arrive — wait briefly and confirm queue is empty
+    await new Promise((r) => setTimeout(r, 100));
+    expect(captainWs._msgQueue.length).toBe(0);
+  });
+});
