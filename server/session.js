@@ -9,24 +9,24 @@ const TICK_INTERVAL_MS = 2000;
 
 function defaultEnergy() {
   return {
-    total: 100,
+    reactorOutput: 100,      // total reactor capacity
     allocation: {
-      propulsion: 40,
-      shields: 20,
-      lifeSupport: 20,
-      sensors: 10,
+      propulsion:  30,       // each system is independent: 0..systemHealth
+      shields:     20,
+      lifeSupport: 15,
+      sensors:     15,
       navComputer: 10,
     },
-    overloads: {}, // systemKey → expiry timestamp (ms)
+    overloads: {},           // systemKey → expiry timestamp (ms)
   };
 }
 
 function defaultSystems() {
   return {
-    propulsion: 100,
-    shields: 100,
+    propulsion:  100,
+    shields:     100,
     lifeSupport: 100,
-    sensors: 100,
+    sensors:     100,
     navComputer: 100,
   };
 }
@@ -37,58 +37,48 @@ function defaultShip() {
     hull: 100,
     position: { x: 400, y: 300 },
     heading: 0,   // degrees, 0 = north (up)
-    velocity: 0,  // 0..1 normalised
+    velocity: 0,  // -0.5..1 normalised
   };
 }
 
 // ─── Energy helpers ────────────────────────────────────────────────────────
 
 /**
- * Normalise an allocation object so its values sum to exactly 100.
- * Clamps each value to [0, systemHealth] before normalising.
+ * Clamp each allocation value to [0, systemHealth].
+ * Does NOT force values to sum to any particular total.
  */
-function normaliseAllocation(allocation, systems) {
-  const keys = Object.keys(allocation);
-  let clamped = {};
-  for (const k of keys) {
-    clamped[k] = Math.max(0, Math.min(allocation[k], systems[k]));
-  }
-  const sum = keys.reduce((s, k) => s + clamped[k], 0);
-  if (sum === 0) {
-    // distribute evenly
-    const each = 100 / keys.length;
-    for (const k of keys) clamped[k] = each;
-    return clamped;
-  }
-  const factor = 100 / sum;
+function clampAllocation(allocation, systems) {
   const result = {};
-  let running = 0;
-  keys.forEach((k, i) => {
-    if (i < keys.length - 1) {
-      result[k] = Math.round(clamped[k] * factor);
-      running += result[k];
-    } else {
-      result[k] = 100 - running; // last absorbs rounding
-    }
-  });
+  for (const k of Object.keys(allocation)) {
+    result[k] = Math.max(0, Math.min(allocation[k] ?? 0, systems[k] ?? 100));
+  }
   return result;
 }
 
 /**
+ * Compute total reactor load from an allocation object.
+ */
+function totalLoad(allocation) {
+  return Object.values(allocation).reduce((s, v) => s + v, 0);
+}
+
+/**
  * Apply an overload to a system.
- * Returns updated energy state (does not mutate).
+ * Returns updated energy + systems (does not mutate).
  */
 function applyOverload(energy, systems, systemKey) {
   const now = Date.now();
   const alreadyActive = energy.overloads[systemKey] && energy.overloads[systemKey] > now;
-  if (alreadyActive) return { energy, systems }; // ignore duplicate
+  if (alreadyActive) return { energy, systems };
 
   const OVERLOAD_DURATION_MS = 30_000;
   const OVERLOAD_DAMAGE = 10;
 
   const newOverloads = { ...energy.overloads, [systemKey]: now + OVERLOAD_DURATION_MS };
   const newSystems = { ...systems, [systemKey]: Math.max(0, systems[systemKey] - OVERLOAD_DAMAGE) };
-  const newAllocation = normaliseAllocation(energy.allocation, newSystems);
+
+  // Clamp allocation to new system health caps (no redistribution)
+  const newAllocation = clampAllocation(energy.allocation, newSystems);
 
   return {
     energy: { ...energy, allocation: newAllocation, overloads: newOverloads },
@@ -109,7 +99,7 @@ function expireOverloads(energy) {
 }
 
 /**
- * Effective energy for a system, considering active overloads.
+ * Effective energy for a system, considering active overloads (+30%).
  */
 function effectiveEnergy(energy, systemKey) {
   const base = energy.allocation[systemKey] ?? 0;
@@ -123,7 +113,7 @@ const sessions = new Map(); // code → session
 
 function generateCode() {
   const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const digits = '0123456789';
+  const digits  = '0123456789';
   let code;
   do {
     code =
@@ -138,15 +128,16 @@ function createSession() {
   const code = generateCode();
   const session = {
     code,
-    players: {},      // role → WebSocket
+    players: {},
     ship: defaultShip(),
     energy: defaultEnergy(),
     systems: defaultSystems(),
     mission: {
       type: 1,
-      status: 'briefing', // briefing | active | won | lost
-      timer: 600,          // seconds remaining
+      status: 'briefing',
+      timer: 600,
       lifeSupportLowSince: null,
+      reactorOverloadSince: null,
       target: { x: 1800, y: 900, velocity: 0.8, heading: 135 },
     },
     tickInterval: null,
@@ -167,10 +158,6 @@ function deleteSession(code) {
 
 // ─── Player joining ────────────────────────────────────────────────────────
 
-/**
- * Attempt to add a player WebSocket to a session with the requested role.
- * Returns { ok: true } or { ok: false, reason: string }.
- */
 function joinSession(session, role, ws) {
   if (!ROLES.includes(role)) return { ok: false, reason: `Unknown role: ${role}` };
   if (session.players[role]) return { ok: false, reason: `Role ${role} already taken` };
@@ -209,15 +196,20 @@ function sendTo(session, role, message) {
 // ─── Game state snapshot ───────────────────────────────────────────────────
 
 function gameStateSnapshot(session) {
+  const load = totalLoad(session.energy.allocation);
   return {
     type: 'game_state',
     ship: session.ship,
-    energy: session.energy,
+    energy: {
+      ...session.energy,
+      totalLoad: load,
+      overloaded: load > session.energy.reactorOutput,
+    },
     systems: session.systems,
     mission: {
-      type: session.mission.type,
+      type:   session.mission.type,
       status: session.mission.status,
-      timer: session.mission.timer,
+      timer:  session.mission.timer,
       target: session.mission.target,
     },
     connectedRoles: Object.keys(session.players),
@@ -231,16 +223,10 @@ function startTick(session) {
   session.tickInterval = setInterval(() => {
     if (session.mission.status !== 'active') return;
 
-    // Expire overloads
     session.energy = expireOverloads(session.energy);
-
-    // Delegate movement + damage + win/loss to mission module
     tickMission(session, effectiveEnergy, TICK_INTERVAL_MS);
-
-    // Broadcast updated state
     broadcast(session, gameStateSnapshot(session));
 
-    // Stop ticking when mission ends
     if (session.mission.status === 'won' || session.mission.status === 'lost') {
       clearInterval(session.tickInterval);
       session.tickInterval = null;
@@ -250,10 +236,6 @@ function startTick(session) {
 
 // ─── Message handlers ──────────────────────────────────────────────────────
 
-/**
- * Handle an incoming WebSocket message from a player.
- * Returns true if the message was handled.
- */
 function handleMessage(session, senderRole, raw) {
   let msg;
   try {
@@ -276,9 +258,10 @@ function handleMessage(session, senderRole, raw) {
       if (senderRole !== 'engineering') break;
       const { allocation } = msg;
       if (!allocation) break;
+      // Clamp each system independently — no forced redistribution
       session.energy = {
         ...session.energy,
-        allocation: normaliseAllocation(allocation, session.systems),
+        allocation: clampAllocation(allocation, session.systems),
       };
       broadcast(session, gameStateSnapshot(session));
       break;
@@ -300,13 +283,18 @@ function handleMessage(session, senderRole, raw) {
       const { velocity, heading } = msg;
       if (velocity !== undefined) session.ship.velocity = Math.max(-0.5, Math.min(1, velocity));
       if (heading !== undefined) session.ship.heading = ((heading % 360) + 360) % 360;
+      // Broadcast immediately so viewscreen and captain see changes without waiting for tick
+      broadcast(session, gameStateSnapshot(session));
       break;
     }
 
     case 'send_to_viewscreen': {
       const { payload } = msg;
       if (!payload) break;
-      sendTo(session, 'viewscreen', { type: 'viewscreen_update', from: senderRole, payload });
+      const vsMsg = { type: 'viewscreen_update', from: senderRole, payload };
+      // Send to viewscreen screen AND captain's viewscreen area
+      sendTo(session, 'viewscreen', vsMsg);
+      sendTo(session, 'captain', vsMsg);
       break;
     }
 
@@ -331,10 +319,11 @@ module.exports = {
   startTick,
   handleMessage,
   // exported for testing
-  normaliseAllocation,
+  clampAllocation,
   applyOverload,
   expireOverloads,
   effectiveEnergy,
+  totalLoad,
   defaultEnergy,
   defaultSystems,
 };

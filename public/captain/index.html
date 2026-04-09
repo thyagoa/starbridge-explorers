@@ -277,6 +277,8 @@ const ALL_ROLES = ['helm', 'engineering', 'viewscreen'];
 let connected = false;
 let missionStatus = 'briefing';
 let ws = null;
+let currentView = null;   // { from, payload } — persists until replaced
+let latestGameState = null;
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 function connect() {
@@ -292,12 +294,19 @@ function connect() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'role_assigned' || msg.type === 'game_state') {
+      latestGameState = msg;
       if (msg.ship)    updateShip(msg.ship);
       if (msg.mission) updateMission(msg.mission);
       if (msg.connectedRoles) updateCrew(msg.connectedRoles);
+      // Refresh viewscreen content with latest data if one is showing
+      if (currentView) refreshViewscreen(msg);
     }
     if (msg.type === 'players_update') updateCrew(msg.connectedRoles);
-    if (msg.type === 'viewscreen_update') renderViewscreen(msg.from, msg.payload);
+    if (msg.type === 'viewscreen_update') {
+      currentView = { from: msg.from, payload: msg.payload };
+      renderViewscreen(currentView.from, currentView.payload, latestGameState);
+      addLog(`${msg.from.toUpperCase()} enviou para o viewscreen.`, 'info');
+    }
     if (msg.type === 'error') addLog(`Erro: ${msg.reason}`, 'crit');
   };
 
@@ -307,6 +316,16 @@ function connect() {
     addLog('Desconectado. Reconectando...', 'warn');
     setTimeout(connect, 3000);
   };
+}
+
+function refreshViewscreen(gameState) {
+  if (!currentView) return;
+  const { from, payload } = currentView;
+  if (payload.view === 'engineering' && gameState.energy) {
+    renderViewscreen(from, { ...payload, allocation: gameState.energy.allocation, systemHealth: gameState.systems, totalLoad: gameState.energy.totalLoad, reactorOutput: gameState.energy.reactorOutput, overloaded: gameState.energy.overloaded }, gameState);
+  } else if (payload.view === 'helm_map' && gameState.ship) {
+    renderViewscreen(from, { ...payload, shipPos: gameState.ship.position, targetPos: gameState.mission?.target }, gameState);
+  }
 }
 
 // ── Actions ────────────────────────────────────────────────────────────────
@@ -380,36 +399,44 @@ function updateCrew(roles) {
   });
 }
 
-function renderViewscreen(from, payload) {
+const SYS_NAMES = { propulsion:'PROPULSÃO', shields:'ESCUDOS', lifeSupport:'SUPORTE VIDA', sensors:'SENSORES', navComputer:'NAV COMP.' };
+
+function renderViewscreen(from, payload, gameState) {
   const content = document.getElementById('viewscreen-content');
 
   if (payload.view === 'engineering') {
-    const sysNames = { propulsion:'PROPULSÃO', shields:'ESCUDOS', lifeSupport:'SUPORTE VIDA', sensors:'SENSORES', navComputer:'NAV COMP.' };
-    let html = '<div class="vs-eng">';
+    const load       = payload.totalLoad ?? Object.values(payload.allocation||{}).reduce((s,v)=>s+v,0);
+    const reactorOut = payload.reactorOutput ?? 100;
+    const overloaded = payload.overloaded ?? (load > reactorOut);
+    const loadColor  = overloaded ? '#d85a30' : load >= 80 ? '#e8a020' : '#1d9e75';
+    let html = `<div style="margin-bottom:10px;font-size:11px;font-family:var(--font-disp);color:var(--c-dim)">
+      CARGA DO REATOR: <span style="color:${loadColor}">${load} / ${reactorOut}${overloaded?' ⚠':''}</span>
+    </div><div class="vs-eng">`;
     for (const [key, val] of Object.entries(payload.allocation || {})) {
+      const health = payload.systemHealth?.[key] ?? 100;
+      const color  = health < 30 ? '#d85a30' : health < 60 ? '#e8a020' : '#0e7fc4';
       html += `<div class="vs-eng-row">
-        <span class="vs-eng-name">${sysNames[key]||key}</span>
-        <div class="vs-bar-wrap"><div class="vs-bar-fill" style="width:${val}%"></div></div>
-        <span class="vs-eng-val">${val}%</span>
+        <span class="vs-eng-name">${SYS_NAMES[key]||key}</span>
+        <div class="vs-bar-wrap"><div class="vs-bar-fill" style="width:${val}%;background:${color}"></div></div>
+        <span class="vs-eng-val" style="color:${color}">${val}%</span>
       </div>`;
     }
     html += '</div>';
     content.innerHTML = html;
-    addLog('Engenharia enviou painel de energia.', 'info');
   } else if (payload.view === 'helm_map') {
-    const sp = payload.shipPos || {};
-    const tp = payload.targetPos || {};
-    const dist = tp.x ? Math.round(Math.sqrt((sp.x-tp.x)**2+(sp.y-tp.y)**2)) : '—';
+    const sp   = payload.shipPos  || {};
+    const tp   = payload.targetPos || null;
+    const dist = tp ? Math.round(Math.sqrt((sp.x-tp.x)**2+(sp.y-tp.y)**2)) : '—';
+    const distColor = dist !== '—' && dist < 200 ? '#d85a30' : dist < 600 ? '#e8a020' : '#0e7fc4';
     content.innerHTML = `<div class="vs-helm">
-      <div style="font-size:14px;font-family:var(--font-disp);color:var(--c-accent);margin-bottom:10px">MAPA DE NAVEGAÇÃO</div>
+      <div style="font-size:13px;font-family:var(--font-disp);color:var(--c-accent);margin-bottom:10px">MAPA DE NAVEGAÇÃO</div>
       <div class="vs-map-coords">◈ NAVIO: (${Math.round(sp.x||0)}, ${Math.round(sp.y||0)})</div>
-      <div class="vs-map-coords" style="color:var(--c-crit)">✦ ALVO: (${Math.round(tp.x||0)}, ${Math.round(tp.y||0)})</div>
-      <div class="vs-map-coords" style="margin-top:8px;color:var(--c-accent2)">DISTÂNCIA: ${dist} u</div>
+      <div class="vs-map-coords" style="color:var(--c-crit)">✦ ALVO: ${tp ? `(${Math.round(tp.x)}, ${Math.round(tp.y)})` : '—'}</div>
+      <div class="vs-map-coords" style="margin-top:8px;color:${distColor}">DISTÂNCIA: ${dist} u</div>
+      ${gameState?.ship ? `<div class="vs-map-coords" style="margin-top:4px">Heading: ${gameState.ship.heading}° · Velocidade: ${Math.round(gameState.ship.velocity*100)}%</div>` : ''}
     </div>`;
-    addLog('Helm enviou mapa de navegação.', 'info');
   } else {
     content.innerHTML = `<div class="vs-idle-text">${from.toUpperCase()} // TRANSMISSÃO RECEBIDA</div>`;
-    addLog(`${from} enviou dados para o viewscreen.`, 'info');
   }
 }
 

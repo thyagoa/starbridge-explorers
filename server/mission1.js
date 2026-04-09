@@ -141,14 +141,29 @@ function tickMission(session, effectiveEnergy, tickMs) {
     mission.lifeSupportLowSince = null;
   }
 
-  // 5. Check win condition: intercepted target
+  // 5. Reactor overload hull decay
+  const load = Object.values(energy.allocation).reduce((s, v) => s + v, 0);
+  const isOverloaded = load > energy.reactorOutput;
+  if (isOverloaded) {
+    if (!mission.reactorOverloadSince) {
+      mission.reactorOverloadSince = Date.now();
+    }
+    // Immediate decay proportional to excess load
+    const excess = load - energy.reactorOutput;
+    const overloadDecay = (excess / energy.reactorOutput) * HULL_DECAY_RATE * dt;
+    ship.hull = Math.max(0, ship.hull - overloadDecay);
+  } else {
+    mission.reactorOverloadSince = null;
+  }
+
+  // 6. Check win condition: intercepted target
   const dist = distance(ship.position, mission.target);
   if (dist <= INTERCEPT_DISTANCE) {
     mission.status = 'won';
     return;
   }
 
-  // 6. Check loss conditions
+  // 7. Check loss conditions
   if (ship.hull <= 0) {
     mission.status = 'lost';
     return;
@@ -157,6 +172,7 @@ function tickMission(session, effectiveEnergy, tickMs) {
     mission.status = 'lost';
     return;
   }
+
 }
 
 module.exports = {
