@@ -7,7 +7,6 @@ const {
   joinSession,
   removePlayer,
   gameStateSnapshot,
-  normaliseAllocation,
 } = require('../../server/session');
 
 describe('Session management', () => {

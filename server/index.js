@@ -101,17 +101,19 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  // Confirm role assignment + send current game state
+  // Confirm role assignment + send current game state.
+  // Spread snapshot first so our explicit `type` wins over the snapshot's 'game_state'.
   ws.send(JSON.stringify({
+    ...gameStateSnapshot(session),
     type: 'role_assigned',
     role,
     code,
     mapData: { systems: MAP_SYSTEMS, routes: MAP_ROUTES },
-    ...gameStateSnapshot(session),
   }));
 
-  // Notify everyone of updated connected roles
-  broadcast(session, { type: 'players_update', connectedRoles: Object.keys(session.players) });
+  // Notify OTHER players of the updated connected roles.
+  // The joining player already has connectedRoles inside role_assigned.
+  broadcast(session, { type: 'players_update', connectedRoles: Object.keys(session.players) }, ws);
 
   ws.on('message', (raw) => {
     handleMessage(session, role, raw.toString());

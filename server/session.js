@@ -231,7 +231,7 @@ function startTick(session) {
       clearInterval(session.tickInterval);
       session.tickInterval = null;
     }
-  }, TICK_INTERVAL_MS);
+  }, TICK_INTERVAL_MS).unref(); // don't prevent Node process from exiting (e.g. in tests)
 }
 
 // ─── Message handlers ──────────────────────────────────────────────────────

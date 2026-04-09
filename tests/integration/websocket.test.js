@@ -14,6 +14,21 @@ let wsUrl;
 function wsConnect(role, code) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${wsUrl}/ws/${role}/${code}`);
+    // Buffer messages that arrive before nextMessage() is called.
+    // In Node.js 24 the server may send role_assigned before the client
+    // fires 'open', so we must not miss messages by registering the
+    // listener early.
+    ws._msgQueue   = [];
+    ws._msgWaiters = [];
+    ws.on('message', (data) => {
+      let msg;
+      try { msg = JSON.parse(data.toString()); } catch { return; }
+      if (ws._msgWaiters.length) {
+        ws._msgWaiters.shift()(msg);
+      } else {
+        ws._msgQueue.push(msg);
+      }
+    });
     ws.once('open', () => resolve(ws));
     ws.once('error', reject);
   });
@@ -21,15 +36,24 @@ function wsConnect(role, code) {
 
 function nextMessage(ws) {
   return new Promise((resolve, reject) => {
-    ws.once('message', (data) => {
-      try { resolve(JSON.parse(data.toString())); }
-      catch (e) { reject(e); }
-    });
-    ws.once('error', reject);
+    if (ws._msgQueue && ws._msgQueue.length) {
+      return resolve(ws._msgQueue.shift());
+    }
+    if (ws._msgWaiters) {
+      ws._msgWaiters.push(resolve);
+    } else {
+      // Fallback for ws objects not created via wsConnect (e.g. inline ws2)
+      ws.once('message', (data) => {
+        try { resolve(JSON.parse(data.toString())); }
+        catch (e) { reject(e); }
+      });
+      ws.once('error', reject);
+    }
   });
 }
 
 function closeWs(ws) {
+  if (!ws) return Promise.resolve();
   return new Promise((resolve) => {
     if (ws.readyState === WebSocket.CLOSED) return resolve();
     ws.once('close', resolve);
@@ -49,6 +73,8 @@ beforeAll((done) => {
 });
 
 afterAll((done) => {
+  // Terminate any lingering connections so wss.close() callback fires promptly.
+  wss.clients.forEach((client) => client.terminate());
   wss.close(() => httpServer.close(done));
 });
 
